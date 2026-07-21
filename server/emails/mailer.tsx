@@ -29,6 +29,8 @@ type SendMailOptions = {
   previewText?: string;
   /** The plain-text version of the email body. */
   text: string;
+  /** Whether to omit the HTML body and inline attachments. */
+  plainTextOnly?: boolean;
   /** The React element rendered to produce the HTML body. */
   component: JSX.Element;
   /** Additional CSS to inject into the head of the email. */
@@ -168,38 +170,38 @@ export class Mailer {
       return;
     }
 
-    const html = Oy.renderTemplate(
-      data.component,
-      {
-        title: data.subject,
-        headCSS: [baseStyles, data.headCSS].join(" "),
-      } as Oy.RenderOptions,
-      this.template
-    );
+    const html = data.plainTextOnly
+      ? undefined
+      : Oy.renderTemplate(
+          data.component,
+          {
+            title: data.subject,
+            headCSS: [baseStyles, data.headCSS].join(" "),
+          } as Oy.RenderOptions,
+          this.template
+        );
 
-    try {
-      Logger.info("email", `Sending email "${data.subject}" to ${data.to}`);
-
-      const info = await transporter.sendMail({
-        from: data.from,
-        replyTo: data.replyTo ?? env.SMTP_REPLY_EMAIL ?? env.SMTP_FROM_EMAIL,
-        to: data.to,
-        messageId: data.messageId,
-        references: data.references,
-        inReplyTo: data.references?.at(-1),
-        subject: data.subject,
-        headers: this.tagHeaders(data.tags),
-        html,
-        text: data.text,
-        list: data.unsubscribeUrl
-          ? {
-              unsubscribe: {
-                url: data.unsubscribeUrl,
-                comment: "Unsubscribe from these emails",
-              },
-            }
-          : undefined,
-        attachments: env.isCloudHosted
+    const message = {
+      from: data.from,
+      replyTo: data.replyTo ?? env.SMTP_REPLY_EMAIL ?? env.SMTP_FROM_EMAIL,
+      to: data.to,
+      messageId: data.messageId,
+      references: data.references,
+      inReplyTo: data.references?.at(-1),
+      subject: data.subject,
+      headers: this.tagHeaders(data.tags),
+      html,
+      text: data.text,
+      list: data.unsubscribeUrl
+        ? {
+            unsubscribe: {
+              url: data.unsubscribeUrl,
+              comment: "Unsubscribe from these emails",
+            },
+          }
+        : undefined,
+      attachments:
+        data.plainTextOnly || env.isCloudHosted
           ? undefined
           : [
               {
@@ -208,7 +210,12 @@ export class Mailer {
                 cid: "header-image",
               },
             ],
-      });
+    };
+
+    try {
+      Logger.info("email", `Sending email "${data.subject}" to ${data.to}`);
+
+      const info = await transporter.sendMail(message);
 
       if (useTestEmailService) {
         Logger.info(

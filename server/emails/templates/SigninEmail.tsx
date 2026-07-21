@@ -55,10 +55,18 @@ ${this.t("If the link expired you can request a new one from your team's signin 
     }
 
     return `
-${this.t("Enter this verification code")}: ${verificationCode}
+${this.t("Sign-in Code")}
+
+${this.t("Enter this code on your team's sign-in page to continue.")}
+
+${verificationCode}
 
 ${this.t("If the code expired you can request a new one from your team's signin page at")}: ${teamUrl}
 `;
+  }
+
+  protected plainTextOnly(): boolean {
+    return true;
   }
 
   protected render({ token, client, teamUrl, verificationCode }: Props) {
