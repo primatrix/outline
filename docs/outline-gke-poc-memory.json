@@ -1,0 +1,714 @@
+{
+  "title": "Outline GKE POC memory",
+  "updatedAt": "2026-07-21T22:12:00+08:00",
+  "purpose": "Trace the Outline MVP/POC deployment attempt on GKE so future work can continue without relying on chat history.",
+  "usageGuide": "/Users/jiongxuan/workspace/note/outline-gke-poc-usage.md",
+  "repositoryRules": {
+    "noNewMarkdownFiles": true,
+    "recordFormat": "json",
+    "secretsPolicy": "Do not store OAuth client secrets, API keys, database passwords, Redis passwords, SECRET_KEY, or UTILS_SECRET in this file."
+  },
+  "target": {
+    "project": "tpu-service-473302",
+    "cluster": "sglang-jax-dev",
+    "region": "southamerica-west1",
+    "zone": "southamerica-west1-a",
+    "kubeContext": "gke_tpu-service-473302_southamerica-west1_sglang-jax-dev",
+    "consoleUrl": "https://console.cloud.google.com/kubernetes/clusters/details/southamerica-west1/sglang-jax-dev/nodes?project=tpu-service-473302"
+  },
+  "plannedTencentProduction": {
+    "status": "resource-planning",
+    "observedAt": "2026-07-14T14:16:00+08:00",
+    "scope": "Formal Outline production service. The current GKE deployment remains a demo/POC only. Tencent Cloud pre-production and production start from zero; do not migrate any demo documents, attachments, users, permissions, API keys, or history.",
+    "locationAndAccess": {
+      "cloud": "Tencent Cloud",
+      "location": "China mainland",
+      "internetFacing": true,
+      "productionEndpoint": "A stable HTTPS domain is required. Public IP plus port is not an acceptable production access path.",
+      "icpRequirement": "Complete ICP filing before opening public access. Tencent Cloud requires a domain for its filing workflow and does not support IP-only filing. Complete public-security filing within the required period after launch.",
+      "domainTasks": [
+        "Allocate a company-owned domain such as kb.<company-domain> for Outline.",
+        "Use the same HTTPS origin as Outline URL, email magic-link origin, and OIDC callback origin.",
+        "Obtain a certificate and configure HTTPS on CLB before authentication validation.",
+        "Use a separate SES sender subdomain such as notify.<company-domain>."
+      ]
+    },
+    "capacityTarget": {
+      "activeUsers": 500,
+      "peakConcurrentUsers": 100,
+      "performanceValidationTarget": "At least 150 concurrent sessions in pre-production, combining browsing, editing, same-document collaboration, and agent API writes."
+    },
+    "recommendedDeployment": {
+      "platform": "Dedicated production TKE cluster spanning two or three availability zones.",
+      "network": "Dedicated VPC, private subnets for TKE, PostgreSQL, Redis, and COS access; public exposure only through HTTPS CLB, with commercial WAF a separate security and budget decision.",
+      "nodePool": {
+        "minimum": "Three on-demand 4 vCPU / 8 GiB nodes distributed across availability zones.",
+        "autoscaling": "Minimum 3, maximum 6 nodes. Do not use spot instances for the baseline capacity."
+      },
+      "outlineServices": [
+        "Web/API: minimum 3 replicas, HPA to 6, request 1 vCPU / 2 GiB, limit 2 vCPU / 4 GiB.",
+        "Collaboration: minimum 2 replicas, HPA to 4, request 1 vCPU / 2 GiB, limit 2 vCPU / 4 GiB.",
+        "Worker: minimum 2 replicas, HPA to 3, request 0.5 vCPU / 1 GiB.",
+        "Cron: exactly 1 replica."
+      ],
+      "outlineRuntimeRequirements": [
+        "Run web, collaboration, worker, and cron as separate deployments instead of retaining the POC all-in-one deployment.",
+        "Set REDIS_COLLABORATION_URL to managed Redis before horizontally scaling collaboration.",
+        "Use WEB_CONCURRENCY=1 inside each Kubernetes container and scale with Pods; explicitly cap total database connection pools across all services.",
+        "Use an immutable Outline image tag and digest in Tencent Container Registry; never deploy latest tags."
+      ]
+    },
+    "managedDependencies": {
+      "postgresql": "TencentDB for PostgreSQL in dual-node high-availability mode, initial target 4 vCPU / 16 GiB with 200 GiB storage, private access, automatic growth alerting, daily full backups, and at least 30 days of log backups for point-in-time recovery.",
+      "redis": "TencentDB for Redis standard architecture, initial target 4 GiB with at least one replica, private access, automatic backup, and capacity alerts.",
+      "objectStorage": "Two private COS buckets: one for Outline attachments and one for backup exports. Enable versioning, encryption, lifecycle rules, and cross-bucket replication for the recovery bucket.",
+      "mail": "Tencent Cloud SES through a business-verified account with SMTP permissions, a verified sender subdomain, SPF/DKIM, and alerting for delivery failures and bounces. New personal-verified accounts cannot rely on SES SMTP after 2026-03-02.",
+      "secrets": "Tencent Cloud SSM plus TKE ExternalSecrets. Do not store database credentials, Redis credentials, SMTP credentials, SECRET_KEY, or UTILS_SECRET in source control or Helm values.",
+      "delivery": "Tencent Container Registry, Infrastructure as Code, and a separate pre-production environment before production changes."
+    },
+    "authenticationPolicy": {
+      "primary": "Email OTP or magic link through SES after HTTPS and a stable domain are available.",
+      "futureUnifiedEntry": "Reserve standard OIDC issuer, client credentials, callback URL, and email-mapping configuration boundaries without enabling a provider in the first release. The future provider may be a Feilian-like corporate IdP, DingTalk, or Feishu; prefer federation through one IdP rather than Outline-specific changes per source.",
+      "onboarding": "Require invitations for new users. Do not enable unrestricted public registration for the internal knowledge base.",
+      "agentIdentity": "Issue personal API keys to users and separate bot identities to automated agents; use minimum scopes, rotation, revocation, and audit review."
+    },
+    "backupAndRecovery": {
+      "initialObjectives": {
+        "rpo": "15 minutes",
+        "rto": "4 hours"
+      },
+      "requiredArtifacts": [
+        "PostgreSQL backups and point-in-time recovery logs.",
+        "COS attachment objects and historical versions.",
+        "Infrastructure and application manifests held in version control.",
+        "Recoverable copies of stable application secrets held in SSM."
+      ],
+      "exercise": "Run a monthly isolated restore rehearsal: restore database and attachments, inject production secrets, then verify sign-in, document counts, attachments, permissions, API access, and collaboration."
+    },
+    "monitoringAndAlerts": {
+      "platform": "TKE monitoring plus Tencent Cloud Prometheus/Grafana, TencentDB metrics, CLB/WAF logs, external HTTPS synthetic monitoring, and Sentry for application errors.",
+      "criticalAlerts": [
+        "Public HTTPS or Outline health check unavailable.",
+        "No ready Web/API or collaboration Pods.",
+        "PostgreSQL availability, storage, connections, or backup failure.",
+        "Redis availability, memory, or replication failure.",
+        "COS and SES delivery failures.",
+        "Unexpected error rate, latency, queue backlog, or authentication failures."
+      ]
+    },
+    "releaseAndUpgradePolicy": {
+      "outline": "Test every image and database migration against a production-like pre-production clone. Take verified backups before migration and keep an approved rollback or restore path.",
+      "postgresql": "Treat a major version upgrade as protected maintenance, not zero downtime: rehearse against a clone, schedule a read-only window, validate application behavior, and retain pre-upgrade backups.",
+      "testScenarios": [
+        "Email invitation, login, logout, disabled-user, delivery-failure, and bounce checks; verify that the OIDC configuration/callback boundary remains ready without enabling a provider.",
+        "Role, collection, document, and API-key authorization boundaries.",
+        "Document editing, same-document collaboration, search, import/export, and COS attachments.",
+        "API and MCP read/write attribution with user and bot identities.",
+        "Pod restart, Redis disruption, database failover, attachment failure, and full restore rehearsal.",
+        "Load test at 1.5 times the expected peak concurrency."
+      ]
+    },
+    "gkeToProductionMigration": {
+      "decision": "No migration.",
+      "details": "Create clean Tencent Cloud pre-production and production databases, Redis instances, COS buckets, SSM secret namespaces, administrator workspace, users, invitations, and API keys. GKE only supplies POC findings and test cases."
+    },
+    "planningBudget": {
+      "currency": "CNY",
+      "baselineMonthly": "5000-9500",
+      "recommendedApprovalMonthly": "8000 plus 20 percent contingency",
+      "alwaysOnPreProductionAdditionalMonthly": "1500-3000",
+      "optionalWafAdditionalMonthly": "3880",
+      "exclusions": [
+        "Engineering and operations staffing.",
+        "Corporate IdP, DingTalk, Feishu, or other third-party licensing.",
+        "Cross-region disaster recovery, SMS, external security assessment, and unexpected large attachment egress.",
+        "Existing domain asset cost."
+      ],
+      "pricingNotes": "Planning ranges must be re-quoted in Tencent Cloud for the chosen mainland region, purchase term, instance family, storage, bandwidth, and actual traffic before procurement."
+    },
+    "sources": [
+      "https://cloud.tencent.com/document/product/243/18910",
+      "https://cloud.tencent.com/document/product/243/39038",
+      "https://cloud.tencent.com/document/product/457/106706",
+      "https://cloud.tencent.com/document/product/457/34180",
+      "https://cloud.tencent.com/document/product/409/94889",
+      "https://cloud.tencent.com/document/product/409/96143",
+      "https://cloud.tencent.com/document/product/400/7574",
+      "https://www.tencentcloud.com/document/product/1084/40180",
+      "https://cloud.tencent.com/document/product/1288/47930",
+      "https://intl.cloud.tencent.com/zh/document/product/457/45157",
+      "https://cloud.tencent.com/document/product/213/2176",
+      "https://buy.cloud.tencent.com/price/pgsql",
+      "https://buy.cloud.tencent.com/price/lb/calculator",
+      "https://cloud.tencent.com/product/cos",
+      "https://buy.cloud.tencent.com/price/waf"
+    ]
+  },
+  "confirmedClusterState": {
+    "clusterStatus": "RUNNING",
+    "gkeVersion": "1.36.0-gke.2459000",
+    "defaultStorageClass": "standard-rwo",
+    "storageClasses": [
+      "dynamic-rwo",
+      "gcsfusecsi-checkpointing",
+      "gcsfusecsi-serving",
+      "gcsfusecsi-training",
+      "premium-rwo",
+      "standard",
+      "standard-rwo"
+    ],
+    "ingressClass": "no IngressClass object observed; GKE ingress is selected with kubernetes.io/ingress.class=gce",
+    "loadBalancerServices": "none observed before Outline deployment; current public access uses GKE managed Ingress and a global HTTP load balancer",
+    "namespaceOutlinePoc": "created; Outline release is deployed"
+  },
+  "dedicatedNodePool": {
+    "name": "knowledge-base",
+    "reasonForHyphenatedName": "GKE node pool names use hyphen-friendly DNS style; user-facing requested name was knowledge_base.",
+    "machineType": "e2-standard-4",
+    "diskType": "pd-balanced",
+    "diskSizeGb": 100,
+    "autoscaling": {
+      "enabled": true,
+      "minNodes": 1,
+      "maxNodes": 2
+    },
+    "labels": {
+      "dedicated": "knowledge-base",
+      "workload": "outline-poc"
+    },
+    "taints": [
+      {
+        "key": "dedicated",
+        "value": "knowledge-base",
+        "effect": "NoSchedule"
+      }
+    ],
+    "verifiedNode": {
+      "name": "gke-sglang-jax-dev-knowledge-base-08afe2e4-w3mz",
+      "status": "Ready",
+      "allocatableCpu": "3920m",
+      "allocatableMemory": "13591660Ki",
+      "observedUsageAfterCreation": {
+        "cpu": "145m",
+        "memory": "1075Mi"
+      },
+      "systemPods": "GKE system pods on this node were observed Running after creation."
+    }
+  },
+  "existingNodePools": [
+    {
+      "name": "default-pool",
+      "machineType": "e2-standard-16",
+      "note": "CPU pool, but some nodes were marked as autoscaler deletion candidates during inspection."
+    },
+    {
+      "name": "apps",
+      "machineType": "e2-standard-8",
+      "note": "CPU pool with 10 Ready nodes, but not exclusive to this POC."
+    },
+    {
+      "name": "v6e-4x4-np-0",
+      "machineType": "ct6e-standard-4t",
+      "note": "TPU pool with google.com/tpu=present:NoSchedule taint."
+    },
+    {
+      "name": "v6e-4x8-np-0",
+      "machineType": "ct6e-standard-4t",
+      "note": "TPU pool with google.com/tpu=present:NoSchedule taint."
+    }
+  ],
+  "recommendedPocShape": {
+    "namespace": "outline-poc",
+    "helmReleaseName": "outline",
+    "chart": "community-charts/outline",
+    "outlineReplicas": 1,
+    "database": "chart built-in PostgreSQL with PVC",
+    "redis": "chart built-in Redis with PVC",
+    "fileStorage": "local PVC for POC",
+    "storageClass": "standard-rwo",
+    "firstAccessPath": "kubectl port-forward was used to prove in-cluster health before exposing it",
+    "currentAccessPath": "GKE managed Ingress at http://outline-poc.8.232.42.156.sslip.io"
+  },
+  "helmInstallAttempt": {
+    "chartVersion": "0.9.0",
+    "appVersion": "1.8.1",
+    "helmVersion": "v4.2.2",
+    "localValuesFile": ".outline-poc/values.yaml",
+    "localValuesContainsSecrets": false,
+    "releaseName": "outline",
+    "namespace": "outline-poc",
+    "installStatus": "deployed and externally reachable",
+    "revision": 4,
+    "verifiedAt": "2026-07-07T15:41:37+08:00",
+    "verifiedState": {
+      "pods": [
+        "outline-5cfbff9574-b9sdq Ready on knowledge-base",
+        "outline-postgresql-0 Ready on knowledge-base",
+        "outline-redis-master-0 Ready on knowledge-base",
+        "mailpit-d87456b94-qnk22 Ready on knowledge-base"
+      ],
+      "pvcs": [
+        "outline-data Bound 20Gi standard-rwo",
+        "data-outline-postgresql-0 Bound 20Gi standard-rwo",
+        "redis-data-outline-redis-master-0 Bound 8Gi standard-rwo"
+      ],
+      "health": "kubectl exec deploy/outline -- wget -qO- http://127.0.0.1:3000/_health returned OK",
+      "portForwardHealth": "curl http://127.0.0.1:3000/_health returned HTTP 200 OK",
+      "externalHealth": "curl http://outline-poc.8.232.42.156.sslip.io/_health returned HTTP 200 OK with body OK",
+      "externalHomepage": "curl http://outline-poc.8.232.42.156.sslip.io/ returned HTTP 200 text/html",
+      "externalBundle": "curl http://outline-poc.8.232.42.156.sslip.io/static/assets/index.BLckv9n-.js returned HTTP 200 text/javascript",
+      "ingress": "GKE Ingress outline has address 8.232.42.156, path /*, and backend annotations marked HEALTHY."
+    },
+    "knownLimitation": "Email OTP login is configured through in-cluster Mailpit for MVP durability. Magic-link login can fail when the client source IP changes because Outline binds magic-link tokens to ctx.request.ip."
+  },
+  "externalAccess": {
+    "publicUrl": "http://outline-poc.8.232.42.156.sslip.io",
+    "staticIpName": "outline-poc-ip",
+    "staticIpAddress": "8.232.42.156",
+    "dnsPattern": "sslip.io host mapped to the static IP for POC convenience",
+    "ingressName": "outline",
+    "ingressAnnotations": {
+      "kubernetes.io/ingress.class": "gce",
+      "kubernetes.io/ingress.global-static-ip-name": "outline-poc-ip"
+    },
+    "ingressPath": "/*",
+    "ingressPathType": "ImplementationSpecific",
+    "note": "The first Ingress path of / only served the homepage; /_health returned GKE backend NotFound until the path was changed to /* and the GCE URL map synced."
+  },
+  "mvpAuxiliaryServices": {
+    "mailpit": {
+      "purpose": "Capture Outline sign-in emails inside the cluster for MVP login testing without a real SMTP provider.",
+      "namespace": "outline-poc",
+      "deployment": "mailpit",
+      "service": "mailpit",
+      "image": "axllent/mailpit:latest",
+      "ports": {
+        "smtp": 1025,
+        "httpUi": 8025
+      },
+      "exposure": "ClusterIP for Outline SMTP plus an intentionally unsafe public LoadBalancer service for group MVP testing.",
+      "publicService": "mailpit-public",
+      "publicUrl": "http://34.176.226.25/",
+      "publicExposureReason": "User explicitly prioritized prototype validation over security so colleagues can open the captured email UI from their own machines.",
+      "scheduling": "nodeSelector dedicated=knowledge-base with matching NoSchedule toleration.",
+      "resources": "requests cpu=25m memory=64Mi; limits cpu=250m memory=256Mi."
+    }
+  },
+  "upgradeNotes": {
+    "bitnamiCredentialGuard": "Helm upgrades of the Redis/PostgreSQL subcharts require passing the existing generated passwords from Kubernetes secrets. Do not store those values in this file or committed values.",
+    "upgradePattern": "Read outline-redis redis-password, outline-postgresql password, and outline-postgresql postgres-password into shell variables, then pass them with --set during helm upgrade."
+  },
+  "requiredSchedulingValues": {
+    "nodeSelector": {
+      "dedicated": "knowledge-base"
+    },
+    "tolerations": [
+      {
+        "key": "dedicated",
+        "operator": "Equal",
+        "value": "knowledge-base",
+        "effect": "NoSchedule"
+      }
+    ],
+    "note": "Apply the same nodeSelector and tolerations to Outline, PostgreSQL primary, Redis master, and any local file-storage persistence workload supported by the chart."
+  },
+  "authenticationFindings": {
+    "outlineDoesNotUseNativePasswordLoginForNormalSelfHostedSetup": true,
+    "workspaceCreated": {
+      "observedAt": "2026-07-07T15:12:11+08:00",
+      "name": "Infra",
+      "source": "User completed first-run setup in browser; server logs showed teams.create, users.create, and users.signin via email service."
+    },
+    "currentDeployedAuthConfig": "POST http://outline-poc.8.232.42.156.sslip.io/api/auth.config returned HTTP 200 with name=Infra and providers: [email] after SMTP/Mailpit configuration and team guestSignin enablement.",
+    "firstRunSetupAvailable": "Already completed. /api/installation.create should no longer be used because a team now exists.",
+    "firstRunSetupLimitation": "The first-run setup path is complete. Further login testing should use email OTP through Mailpit until a real SMTP/OIDC path exists.",
+    "smtpStatus": "Configured for MVP through Mailpit at mailpit.outline-poc.svc.cluster.local:1025 with SMTP_FROM_EMAIL=outline-poc@example.local, SMTP_SECURE=false, and SMTP_DISABLE_STARTTLS=true.",
+    "preferredPocProvider": "Email OTP through in-cluster Mailpit for the current no-domain HTTP MVP; replace with real SMTP or OIDC when a production-like domain is available.",
+    "chartSupportedProvidersObserved": [
+      "Slack",
+      "Google",
+      "Microsoft Entra/Azure",
+      "GitHub",
+      "Discord",
+      "Gitea",
+      "GitLab",
+      "Auth0",
+      "Keycloak",
+      "Generic OIDC",
+      "SAML"
+    ],
+    "oidcVariables": [
+      "OIDC_ISSUER_URL",
+      "OIDC_CLIENT_ID",
+      "OIDC_CLIENT_SECRET",
+      "OIDC_DISPLAY_NAME",
+      "OIDC_SCOPES",
+      "OIDC_USERNAME_CLAIM"
+    ],
+    "callbackPath": "/auth/oidc.callback",
+    "note": "If switching to OAuth/OIDC later, the provider may reject the current HTTP sslip.io callback; configure HTTPS before production-like auth validation."
+  },
+  "mvpValidation": {
+    "direction": "No formal domain for now. Continue MVP validation on the current HTTP sslip.io endpoint. Use email OTP via Mailpit for durable login rather than the first-run browser session.",
+    "completedReadOnlyChecks": [
+      "GET /_health returned HTTP 200 text/plain.",
+      "POST /api/documents.list without token returned HTTP 401 authentication_required.",
+      "POST /api/apiKeys.list without token returned HTTP 401 authentication_required.",
+      "POST /api/documents.list with malformed Bearer token returned HTTP 401 with Unable to decode token.",
+      "POST /api/documents.list with API-key-shaped but nonexistent token returned HTTP 401 with Invalid API key.",
+      "GET /mcp returned HTTP 405 and Allow: POST.",
+      "GET /.well-known/oauth-authorization-server returned HTTP 200 with authorization_endpoint, token_endpoint, revocation_endpoint, registration_endpoint, and scopes read/write.",
+      "GET /.well-known/oauth-protected-resource/mcp returned HTTP 200 with resource=/mcp and bearer_methods_supported=[header]."
+    ],
+    "agentFriendlyFindings": {
+      "personalApiKey": "Supported through Settings > API & Access. API requests use Authorization: Bearer <token>. Blank scope means full access; space-separated scopes restrict access.",
+      "supportedScopeForms": [
+        "*",
+        "read",
+        "write",
+        "create",
+        "documents:read",
+        "/api/documents.list",
+        "/api/documents.*"
+      ],
+      "mcp": "Built-in /mcp endpoint exists and supports API/OAuth/MCP auth types. Workspace MCP preference defaults true unless disabled. MCP tool availability is filtered by token scopes.",
+      "oauthForCli": "OAuth metadata and dynamic registration are exposed. Loopback http://localhost or 127.0.0.1 redirect URIs are allowed for native/CLI apps."
+    },
+    "apiKeyAttributionFindings": {
+      "observedAt": "2026-07-07T19:59:32+08:00",
+      "summary": "Outline API keys are personal keys. API authentication resolves the request user from apiKey.userId; document updates then set document.lastModifiedById to that user id and present it to clients as updatedBy.",
+      "currentMvpImplication": "If agents use only an admin-owned API key, UI metadata, revisions, and document history will attribute document changes to that admin user, not to the colleague who requested the agent action.",
+      "builtInTraceFields": [
+        "documents.updatedBy / documents.lastModifiedById show the attributed user.",
+        "revisions.userId and revision collaborators show the attributed editor(s).",
+        "events.actorId, events.authType, events.ip, and events.changes capture mutation context."
+      ],
+      "limitation": "Built-in events record authType=api and actorId, but do not persist the specific apiKey id used for each request. Multiple keys owned by the same user are not distinguishable from document history alone.",
+      "memberKeyCreationValidation": {
+        "observedAt": "2026-07-07T20:11:27+08:00",
+        "result": "Confirmed enabled for ordinary member users. TeamPreferenceDefaults already sets membersCanCreateApiKey=true, so teams.update did not need to persist an explicit preference override.",
+        "smokeUser": "outline-member-api-key-smoke@example.com (temporary; deleted after validation)",
+        "smokeUserRole": "member",
+        "checks": [
+          "POST /api/teams.update with preferences.membersCanCreateApiKey=true succeeded, but presentTeam only showed stored non-default preferences.",
+          "POST /api/auth.info as the smoke member returned policy createApiKey=true and listApiKeys=false.",
+          "POST /api/apiKeys.create as the smoke member succeeded after fetching a CSRF cookie from the web app.",
+          "The temporary smoke API key was deleted immediately with POST /api/apiKeys.delete.",
+          "The temporary smoke member user was deleted immediately with POST /api/users.delete.",
+          "Local temporary files containing the smoke key value and cookies were removed."
+        ]
+      },
+      "mvp10PersonalKeyValidation": {
+        "observedAt": "2026-07-07T20:34:10+08:00",
+        "result": "A personal key generated by outline-mvp-10@example.com was used for document update/create/move after its invalid scope configuration was corrected.",
+        "scopeIssue": "The generated key initially had scope entries /api/full and /api/access, which are not valid Outline API scope grammar. Requests returned authorization_error until the apiKeys.scope field for that key was set to NULL, equivalent to leaving Scope blank in the UI.",
+        "scopeFixMethod": "Used a temporary postgres:16-alpine client pod with the PostgreSQL password injected from the outline-postgresql Kubernetes secret. Updated only the matching apiKeys row by id and deleted the temporary client pod afterwards.",
+        "verification": [
+          "POST /api/auth.info using the key returned outline-mvp-10@example.com.",
+          "POST /api/documents.list using the key succeeded.",
+          "POST /api/documents.update using the key succeeded.",
+          "New/updated documents show updatedBy=Outline MVP Tester 10."
+        ]
+      },
+      "recommendation": "For per-person attribution, each write-capable tester should log in and generate their own personal API key under Settings > API & Access. For stronger agent attribution, add an agent gateway or custom audit field that records requester, agent identity, and key id separately from Outline's native updatedBy."
+    },
+    "testedApiKeyWithoutStoringSecret": {
+      "observedAt": "2026-07-07T15:25:29+08:00",
+      "result": "The supplied key was recognized by the server but was too narrowly scoped for list/search/collection/MCP tool validation.",
+      "evidence": [
+        "POST /api/documents.info with empty body returned HTTP 400 validation_error, proving the key passed auth for that route.",
+        "POST /api/documents.list returned HTTP 403 API key does not have access to this resource.",
+        "POST /api/collections.list returned HTTP 403 API key does not have access to this resource.",
+        "POST /mcp/ initialize returned HTTP 200, but tools/call list_documents returned JSON-RPC Method not found because no matching MCP tools were registered for this narrow scope."
+      ],
+      "recommendation": "Create a short-lived read key with scope read for read/MCP list validation, then a separate short-lived write key with scopes read create write for create/update validation."
+    },
+    "positiveApiAndMcpChecksWithoutStoringSecrets": {
+      "observedAt": "2026-07-07T15:32:41+08:00",
+      "readKeyResult": [
+        "POST /api/documents.list returned HTTP 200 with 2 existing documents.",
+        "POST /api/collections.list returned HTTP 200 with 1 existing collection.",
+        "POST /api/documents.search returned HTTP 200 with 2 existing documents.",
+        "POST /api/users.list returned HTTP 200 with 1 user.",
+        "POST /api/documents.create returned HTTP 403, confirming read key cannot write.",
+        "POST /mcp/ initialize returned HTTP 200 and exposed tools capability.",
+        "POST /mcp/ tools/call list_documents returned HTTP 200 with document results."
+      ],
+      "fullKeyResult": [
+        "POST /api/auth.info returned HTTP 200.",
+        "POST /api/collections.create returned HTTP 200 and created collection Agent API POC 20260707-152857.",
+        "POST /api/documents.create returned HTTP 200 and created document API write smoke 20260707-152857.",
+        "POST /mcp/ tools/call create_document returned HTTP 200 and created document MCP write smoke 20260707-152915.",
+        "POST /api/documents.update returned HTTP 200 and updated the REST smoke document title to API update smoke 20260707-153239.",
+        "POST /api/documents.create returned HTTP 200 for a temporary delete smoke document, and POST /api/documents.delete returned HTTP 200 for that same document.",
+        "Read key later confirmed both created documents through POST /api/documents.list filtered by collection.",
+        "Read key later confirmed MCP-created document through POST /api/documents.search with query MCP write smoke.",
+        "Read key later confirmed the updated REST document title via POST /api/documents.info.",
+        "Read key later confirmed the deleted smoke document still resolves with deletedAt set, proving delete behavior without granting read-key writes.",
+        "Collection document tree showed both test documents after asynchronous cache/structure update."
+      ],
+      "createdPocData": {
+        "collectionName": "Agent API POC 20260707-152857",
+        "apiDocumentTitle": "API update smoke 20260707-153239",
+        "mcpDocumentTitle": "MCP write smoke 20260707-152915",
+      "deletedDocumentTitle": "Delete smoke 20260707-153239"
+      },
+      "usageGuideDocument": {
+        "observedAt": "2026-07-07T16:31:53+08:00",
+        "title": "Outline GKE POC 使用说明",
+        "id": "5a5f658e-4313-4132-958c-dc40c99ad4bb",
+        "path": "/doc/outline-gke-poc-OQfXaR6WDu",
+        "publicUrl": "http://outline-poc.8.232.42.156.sslip.io/doc/outline-gke-poc-OQfXaR6WDu",
+        "sourceFile": "/Users/jiongxuan/workspace/note/outline-gke-poc-usage.md",
+        "collectionName": "Agent API POC 20260707-152857",
+        "collectionId": "5365d4a3-af34-439c-81ee-8dcc9de21b00",
+        "verification": "Created with POST /api/documents.create using an admin/full API key; read key later confirmed title, collectionId, URL, publishedAt, and content prefix."
+      },
+      "mvp10AgentReorganization": {
+        "observedAt": "2026-07-07T20:34:10+08:00",
+        "actor": "outline-mvp-10@example.com personal API key; key value intentionally not stored.",
+        "collectionId": "5365d4a3-af34-439c-81ee-8dcc9de21b00",
+        "result": "Reorganized the Agent API POC collection into a clearer MVP knowledge-base structure, added an API key/API/agent capability-boundary chapter, and moved early smoke docs under a 99 parent document.",
+        "topLevelStructure": [
+          "00 MVP 快速入口与使用指南",
+          "01 当前部署状态与拓扑",
+          "02 Agent/API 使用与验证",
+          "03 登录、API Key 与审计归因",
+          "04 能力边界与魔改路径",
+          "05 API Key、API 与 Agent 能力边界",
+          "06 持久化、邮箱与企业鉴权探索",
+          "99 原始 Smoke / 临时验证记录"
+        ],
+        "smokeChildren": [
+          "测试",
+          "API update smoke 20260707-153239",
+          "MCP write smoke 20260707-152915"
+        ],
+        "documentIds": {
+          "00 MVP 快速入口与使用指南": "5a5f658e-4313-4132-958c-dc40c99ad4bb",
+          "01 当前部署状态与拓扑": "73f05aee-4c99-4a60-832c-3d053ecdd34f",
+          "02 Agent/API 使用与验证": "dc168143-9af0-4edc-85a7-ac0163813f7c",
+          "03 登录、API Key 与审计归因": "3554fdfb-c2a8-430b-9221-7ac9e3b5f984",
+          "04 能力边界与魔改路径": "353b4934-1928-4197-b084-a22ae952f8de",
+          "05 API Key、API 与 Agent 能力边界": "9dd3b1df-51fc-4713-9835-e70a5084ba0f",
+          "06 持久化、邮箱与企业鉴权探索": "ab20cc33-bbaa-401e-8b46-f5269f899029",
+          "99 原始 Smoke / 临时验证记录": "48ea048f-6d36-4b1d-9447-f4ef7509f8f8"
+        },
+        "contentFeatures": "Added Chinese runbook-style context, Markdown tables, fenced code blocks, Mermaid code blocks, LaTeX-style formulas, API key scope guidance, and agent capability/risk boundaries. API verification confirmed the Markdown text was persisted and updatedBy is Outline MVP Tester 10.",
+        "verification": "API verification confirmed the 05 chapter is root-level, updatedBy is Outline MVP Tester 10, and the persisted Markdown contains tables, Mermaid, formulas, and invalid-scope guidance. Earlier PostgreSQL documentStructure verification confirmed the root order pattern and smoke children nested under 99."
+      },
+      "productionReadinessExploration": {
+        "observedAt": "2026-07-08T11:28:38+08:00",
+        "actor": "outline-mvp-10@example.com personal API key; key value intentionally not stored.",
+        "document": {
+          "title": "06 持久化、邮箱与企业鉴权探索",
+          "id": "ab20cc33-bbaa-401e-8b46-f5269f899029",
+          "publicUrl": "http://outline-poc.8.232.42.156.sslip.io/doc/06-Rhu5Ksvsfl"
+        },
+        "keyFindings": [
+          "For domestic or Alibaba Cloud style deployment, keep Outline containerized but move durability concerns to managed PostgreSQL, Redis/Tair, and OSS/S3-compatible object storage when possible.",
+          "Keep SECRET_KEY and UTILS_SECRET stable across deployments; losing or regenerating them can invalidate tokens and encrypted data.",
+          "Real email login and document/invite notifications require a real outbound SMTP service. Mailpit is only an MVP stub.",
+          "Outline currently has generic OIDC support but no native DingTalk or Feishu auth provider in this repository.",
+          "The lowest-risk enterprise login path is an OIDC bridge such as IDaaS/Keycloak/Authing; direct DingTalk or Feishu OAuth requires a custom Outline auth plugin.",
+          "Switching login to OIDC/DingTalk/Feishu does not remove the need for SMTP, because notification emails are sent by Outline through SMTP."
+        ],
+        "recommendedSequence": [
+          "Add a real domain and HTTPS.",
+          "Replace Mailpit with a real SMTP provider and verify magic-link login plus notification emails.",
+          "Design the domestic durable deployment around PostgreSQL backup/restore and attachment storage migration.",
+          "Run an OIDC/IDaaS POC and confirm user identity fields, API-key attribution, and email notifications.",
+          "Only then evaluate whether native DingTalk or Feishu auth plugins are worth building."
+        ],
+        "verification": "POST /api/documents.info confirmed the 06 chapter exists, is published at the recorded URL, contains the persistence/SMTP/DingTalk-Feishu sections, and is updatedBy Outline MVP Tester 10."
+      },
+      "sglangJaxWikiMigration": {
+        "observedAt": "2026-07-08T11:55:09+08:00",
+        "actor": "outline-mvp-10@example.com personal API key; key value intentionally not stored.",
+        "sourceDirectory": "/Users/jiongxuan/workspace/wiki/docs/projects/sglang-jax",
+        "targetCollectionId": "5365d4a3-af34-439c-81ee-8dcc9de21b00",
+        "rootDocument": {
+          "title": "sglang-jax",
+          "id": "48732f5f-90a9-4847-bfad-ac1bc934fe5e",
+          "publicUrl": "http://outline-poc.8.232.42.156.sslip.io/doc/sglang-jax-dKjawfz9dA"
+        },
+        "counts": {
+          "markdownFiles": 38,
+          "outlineDocumentsCreated": 42,
+          "referencedSvgAssetsUploaded": 20,
+          "unreferencedAssetsNotImported": 12,
+          "documentsUpdatedForLinks": 30
+        },
+        "structure": {
+          "rootChildCount": 18,
+          "folderChildCounts": {
+            "code-analysis/": 2,
+            "design_docs/": 10,
+            "operations/": 1,
+            "reference/": 10
+          }
+        },
+        "knownCaveats": [
+          "Excalidraw source files and SVG files not referenced by Markdown were not imported.",
+          "Local Markdown links and local SVG image links were rewritten, but heading anchors depend on Outline's slug generation and should be spot-checked in the UI.",
+          "A source-local relative link in code-analysis/sglang-pd-disaggregation-share.md pointed to a reference document in another directory; it was manually rewritten to the migrated Outline reference document."
+        ],
+        "verification": [
+          "collections.documents showed the sglang-jax root with 18 children and the expected folder child counts.",
+          "documents.info checks confirmed the root document has migration notes and was updated by Outline MVP Tester 10.",
+          "attachments.list for the 系统全景 document showed two uploaded SVG attachments.",
+          "A recursive scan across 42 migrated nodes found no remaining local .md relative links, local SVG image paths, or wiki-style [[...]] links."
+        ]
+      }
+    },
+    "persistentLoginMvpWithoutStoringSecrets": {
+      "observedAt": "2026-07-07T15:41:37+08:00",
+      "configuration": [
+        "Helm revision 4 configured Outline SMTP to the in-cluster Mailpit service.",
+        "Team guestSignin was enabled through POST /api/teams.update with an admin-scoped API key.",
+        "POST /api/auth.config now exposes the email provider."
+      ],
+      "validatedFlow": [
+        "POST /auth/email with preferOTP=true returned success=true.",
+        "Mailpit received an email with subject Sign in verification code.",
+        "GET /auth/email.callback with email, OTP code, client=web, and follow=true returned HTTP 302 to /home.",
+        "The callback set an accessToken cookie in a temporary cookie jar.",
+        "POST /api/auth.info with that cookie returned the expected workspace."
+      ],
+      "recommendedTesterEntry": "Open http://outline-poc.8.232.42.156.sslip.io, continue with Email, then read the magic-link or OTP email from the public Mailpit UI.",
+      "mailpitAccess": "Public MVP URL: http://34.176.226.25/. Local fallback: kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev -n outline-poc port-forward svc/mailpit 8025:8025, then open http://127.0.0.1:8025.",
+      "magicLinkCaveat": "A standard magic-link email was delivered, but curl callback failed with Token mismatch after the client source IP changed. Outline email-signin JWTs include ctx.request.ip, so OTP is the safer MVP login method in this network/LB setup."
+    },
+    "provisionedMvpTestAccounts": {
+      "observedAt": "2026-07-07T16:08:09+08:00",
+      "method": "POST /api/users.invite with suppressEmail=true using an admin-scoped API key; no invitation tokens or API keys are stored here.",
+      "role": "member",
+      "accounts": [
+        "outline-mvp-01@example.com",
+        "outline-mvp-02@example.com",
+        "outline-mvp-03@example.com",
+        "outline-mvp-04@example.com",
+        "outline-mvp-05@example.com",
+        "outline-mvp-06@example.com",
+        "outline-mvp-07@example.com",
+        "outline-mvp-08@example.com",
+        "outline-mvp-09@example.com",
+        "outline-mvp-10@example.com"
+      ],
+      "verification": "POST /api/users.list filtered by these emails returned 10 users.",
+      "loginNote": "Because suppressEmail=true was used, testers should request a fresh login email from the Outline login page. With current Mailpit SMTP, those emails are captured in the public Mailpit MVP UI rather than delivered externally."
+    },
+    "residualRisks": [
+      "Mailpit is an MVP-only email capture service and is not a production SMTP provider.",
+      "Mailpit UI is intentionally public and unauthenticated at http://34.176.226.25/ for prototype validation; anyone with the URL can read sign-in emails and links.",
+      "Passkeys are enabled on the team but are not the primary MVP path because WebAuthn generally requires a secure browser context and at least one registered passkey.",
+      "OAuth/OIDC remains deferred until a provider and HTTPS/domain decision is made."
+    ]
+  },
+  "tencentMvpRollout20260721": {
+    "observedAt": "2026-07-21T22:58:00+08:00",
+    "scope": "Temporary Tencent Cloud path for validating the modified Outline image and default email OTP login before the production deployment plan is finalized.",
+    "build": {
+      "cvm": "ins-3iw2tbc7",
+      "branch": "develop/tencent-vpc-build-runner",
+      "commit": "84b95fde0",
+      "dockerfile": "Dockerfile.tcr",
+      "result": "Built successfully on the 4 vCPU / 8 GiB CVM with the plain-text sign-in email fix.",
+      "uploadIssue": "The first TCR upload stalled with EOF while the builder EIP was limited to 1 Mbps.",
+      "mitigation": "Temporarily raised the builder EIP to 20 Mbps and set Docker max-concurrent-uploads=1; upload completed. EIP bandwidth was restored to 1 Mbps after the rollout."
+    },
+    "tcr": {
+      "registry": "tcr-piu6rsho",
+      "repository": "outline/outline",
+      "visibility": "private",
+      "image": "outline-prod-tcr.tencentcloudcr.com/outline/outline@sha256:4f610baf50b47370e894b3b0821f8d356856fa0d7b662d8b48286757c710efce",
+      "pullSecret": "tcr-outline-pull",
+      "pullIdentity": "tcr$outline-tke-pull-20260721",
+      "credentialPolicy": "The temporary pull identity is limited to PullRepository on outline and expires after 30 days; its password is not stored here. The one-day push identity used for this upload was deleted after the push."
+    },
+    "tke": {
+      "cluster": "cls-7hm02m8r",
+      "namespace": "outline",
+      "deployment": "outline",
+      "result": "Rolling update generation 8 completed with one Ready pod running the exact TCR digest.",
+      "internalHealth": "Kubernetes service proxy /_health returned HTTP 200.",
+      "temporaryApiAccess": "The cluster endpoint security group allows TCP 443 from the build CVM private IP 10.0.48.16/32 for CLI/API operations."
+    },
+    "publicEntry": {
+      "temporaryUrl": "http://124.223.85.123:30265",
+      "result": "The three worker NodePorts returned HTTP 200 from /_health.",
+      "reason": "The TKE Service CLB default domain returned Tencent Cloud's default-domain blocking redirect instead of forwarding the request.",
+      "temporaryChange": "Opened TCP 30265 from 0.0.0.0/0 on the worker security group and changed Outline URL to the first worker NodePort so login redirects remain usable.",
+      "risk": "This is a public unauthenticated HTTP NodePort and is only suitable for the MVP window. Replace it with a custom domain plus HTTPS or a correctly configured CLB listener before production."
+    },
+    "statusMatrix": {
+      "verifiedAndUsable": [
+        "Source commit 84b95fde0 builds successfully on the Tencent CVM.",
+        "The image is present in private TCR as tag git-84b95fde0 and the TKE Deployment runs the matching immutable digest.",
+        "TKE rolling update is healthy: generation 8, updated 1, ready 1, available 1.",
+        "The temporary public endpoint returns HTTP 200 from /_health and exposes the Email provider through /api/auth.config.",
+        "Email OTP request, worker scheduling, email send, callback, and accessToken session creation were verified end to end.",
+        "SigninEmail now generates a plain-text-only message without HTML or inline image attachments."
+      ],
+      "mvpWorkarounds": [
+        "Public access uses http://124.223.85.123:30265 through a worker NodePort, with TCP 30265 open from 0.0.0.0/0.",
+        "Outline URL points to the first worker NodePort because the TKE CLB default domain returned the Tencent default-domain blocking redirect.",
+        "The build and push path uses the temporary CVM plus TAT and a short-lived TCR push identity instead of GitHub Actions.",
+        "TKE API access from the build CVM relies on a temporary cluster security-group rule for 10.0.48.16/32."
+      ],
+      "todoBeforeProduction": [
+        "Confirm the new plain-text email renders normally in AliMail; code generation and delivery are verified, but client-side visual rendering still needs confirmation.",
+        "Replace the public NodePort with a stable custom domain, HTTPS, and a correctly configured CLB listener.",
+        "Remove the 0.0.0.0/0 NodePort rule and temporary cluster API access rule after the stable entry path and pipeline are ready.",
+        "Move image build and push to internal GitLab or a Tencent-native private pipeline.",
+        "Complete production readiness validation for backups, restore, monitoring, load/performance, failure recovery, database upgrades, and SMTP operational limits."
+      ]
+    },
+    "otpValidation": {
+      "provider": "Email",
+      "request": "POST /auth/email with preferOTP=true returned HTTP 200 and success=true.",
+      "delivery": "The Outline worker logged SigninEmail delivery to jiongxuan@infiscale-tech.com without recording the code here.",
+      "callback": "POST /auth/email.callback returned HTTP 302 to http://124.223.85.123:30265/home and set an accessToken cookie in a temporary test cookie jar.",
+      "formatFix": "SigninEmail now uses a plain-text-only message without HTML or inline image attachments, while other email templates keep their existing HTML behavior.",
+      "formatValidation": "The new deployment returned HTTP 200 for health and auth.config, and the worker logged the new SigninEmail template to the test mailbox.",
+      "conclusion": "The default email OTP path is operational end to end on the temporary Tencent MVP entry point, with an email format tailored for the current enterprise mailbox."
+    },
+    "followUps": [
+      "Replace the public NodePort with a custom domain and HTTPS, then set Outline URL to that stable address.",
+      "Remove the temporary 0.0.0.0/0 TCP 30265 rule after the stable entry point is ready.",
+      "Move image build and push into an internal GitLab or Tencent-native pipeline when the private network is available.",
+      "Rotate or delete the temporary TCR pull identity before the 30-day expiry if this MVP is not kept."
+    ]
+  },
+  "nextSteps": [
+    "Review the Agent API POC collection in the UI and decide whether to keep or archive/delete the smoke-test data.",
+    "Optionally add concise MCP guidance under Settings > Features > MCP server and re-run MCP initialize to confirm instructions include workspace guidance.",
+    "For MVP tester login, use the normal Outline URL and public Mailpit UI at http://34.176.226.25/.",
+    "Replace public Mailpit with real SMTP or SSO before any security-sensitive validation.",
+    "Validate UI authorization with at least one non-admin tester using email OTP after inviting or provisioning that tester.",
+    "For production-like validation, prioritize domain/HTTPS plus real SMTP before DingTalk/Feishu native plugin work.",
+    "For domestic deployment, plan PostgreSQL dump/restore and attachment migration from the current local PVC to OSS/S3-compatible storage."
+  ],
+  "usefulCommands": [
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev get nodes -l dedicated=knowledge-base -L dedicated,workload,cloud.google.com/gke-nodepool",
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev get storageclass",
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev get ingressclass",
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev get svc -A --field-selector spec.type=LoadBalancer",
+    "gcloud container node-pools describe knowledge-base --cluster sglang-jax-dev --region southamerica-west1 --project tpu-service-473302",
+    "helm status outline -n outline-poc --kube-context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev",
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev -n outline-poc get pods -o wide",
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev -n outline-poc port-forward svc/mailpit 8025:8025",
+    "kubectl --context gke_tpu-service-473302_southamerica-west1_sglang-jax-dev -n outline-poc get svc mailpit-public -o wide",
+    "curl http://outline-poc.8.232.42.156.sslip.io/_health",
+    "curl http://34.176.226.25/",
+    "curl -X POST -H 'Content-Type: application/json' -d '{}' http://outline-poc.8.232.42.156.sslip.io/api/auth.config",
+    "curl -X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer <API_KEY>' -d '{}' http://outline-poc.8.232.42.156.sslip.io/api/documents.list"
+  ],
+  "openQuestions": [
+    "When should the intentionally public Mailpit UI be removed or replaced?",
+    "Which real authentication path should replace Mailpit for production-like validation: SMTP, OIDC, SAML, or passkeys behind HTTPS?",
+    "Should the POC have a planned teardown date or budget guardrail?",
+    "Which domain and email sender should be used for the first real SMTP test?",
+    "Should DingTalk/Feishu be integrated through an OIDC bridge first, or is a native Outline auth plugin required for the MVP?"
+  ]
+}
