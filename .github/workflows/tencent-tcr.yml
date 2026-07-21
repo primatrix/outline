@@ -1,9 +1,6 @@
 name: Build Outline image for Tencent TCR
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
