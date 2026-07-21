@@ -48,11 +48,6 @@ COPY --from=build --chown=nodejs:nodejs $APP_PATH/.sequelizerc ./.sequelizerc
 COPY --from=build --chown=nodejs:nodejs $APP_PATH/node_modules ./node_modules
 COPY --from=build --chown=nodejs:nodejs $APP_PATH/package.json ./package.json
 
-RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tencent.com/debian|g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends wget \
-    && rm -rf /var/lib/apt/lists/*
-
 ENV FILE_STORAGE_LOCAL_ROOT_DIR=/var/lib/outline/data
 RUN mkdir -p "$FILE_STORAGE_LOCAL_ROOT_DIR" && \
     chown -R nodejs:nodejs "$FILE_STORAGE_LOCAL_ROOT_DIR" && \
@@ -62,7 +57,7 @@ VOLUME /var/lib/outline/data
 
 USER nodejs
 
-HEALTHCHECK --interval=1m CMD wget -qO- "http://localhost:${PORT:-3000}/_health" | grep -q "OK" || exit 1
+HEALTHCHECK --interval=1m CMD node -e "fetch('http://localhost:' + (process.env.PORT || 3000) + '/_health').then(response => response.text()).then(body => { if (!body.includes('OK')) process.exit(1); }).catch(() => process.exit(1))"
 
 EXPOSE 3000
 CMD ["node", "build/server/index.js"]
