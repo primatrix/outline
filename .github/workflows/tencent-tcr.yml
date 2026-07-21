@@ -41,6 +41,18 @@ jobs:
             -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.tencentcloud.com")"
           oidc_token="$(jq --exit-status --raw-output '.value' <<<"${oidc_response}")"
+          oidc_claims="$(python3 - "${oidc_token}" <<'PY'
+          import base64
+          import json
+          import sys
+
+          payload = sys.argv[1].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          print(json.dumps({key: claims[key] for key in ("iss", "aud", "sub")}))
+          PY
+          )"
+          echo "GitHub OIDC claims: ${oidc_claims}"
 
           sts_request="$(jq --null-input \
             --arg provider "${TENCENTCLOUD_OIDC_PROVIDER}" \
@@ -48,14 +60,22 @@ jobs:
             --arg web_identity_token "${oidc_token}" \
             --arg session "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             '{ProviderId: $provider, RoleArn: $role_arn, WebIdentityToken: $web_identity_token, RoleSessionName: $session, DurationSeconds: 3600}')"
-          sts_response="$(curl --fail-with-body --silent --show-error \
+          sts_response_with_status="$(curl --silent --show-error \
             --request POST "https://sts.tencentcloudapi.com" \
             --header "Authorization: SKIP" \
             --header "Content-Type: application/json" \
             --header "X-TC-Action: AssumeRoleWithWebIdentity" \
             --header "X-TC-Region: ${TCR_REGION}" \
             --header "X-TC-Version: 2018-08-13" \
-            --data "${sts_request}")"
+            --data "${sts_request}" \
+            --write-out $'\n%{http_code}')"
+          sts_status="${sts_response_with_status##*$'\n'}"
+          sts_response="${sts_response_with_status%$'\n'*}"
+          if [ "${sts_status}" -lt 200 ] || [ "${sts_status}" -ge 300 ]; then
+            sts_error="$(jq --raw-output '.Response.Error.Code // "unknown"' <<<"${sts_response}")"
+            echo "Tencent STS exchange failed with ${sts_status}: ${sts_error}" >&2
+            exit 1
+          fi
 
           secret_id="$(jq --exit-status --raw-output '.Response.Credentials.TmpSecretId' <<<"${sts_response}")"
           secret_key="$(jq --exit-status --raw-output '.Response.Credentials.TmpSecretKey' <<<"${sts_response}")"
