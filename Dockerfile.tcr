@@ -15,7 +15,8 @@ RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tencent.com/debian|g'
     && rm -rf /var/lib/apt/lists/*
 ENV NODE_OPTIONS="--max-old-space-size=24000"
 
-RUN corepack enable
+RUN npm install --global --registry=https://mirrors.tencent.com/npm corepack@0.35.0 \
+    && corepack enable
 RUN yarn install --immutable --network-timeout 1000000 && \
   yarn cache clean
 
