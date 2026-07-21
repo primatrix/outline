@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: outline-tcr-build-${{ github.ref }}
@@ -16,11 +15,7 @@ concurrency:
 
 env:
   TCR_REGISTRY: outline-prod-tcr.tencentcloudcr.com
-  TCR_REGISTRY_ID: tcr-piu6rsho
-  TCR_REGION: ap-shanghai
   TCR_IMAGE: outline-prod-tcr.tencentcloudcr.com/outline/outline
-  TENCENTCLOUD_OIDC_PROVIDER: GitHubActions
-  TENCENTCLOUD_OIDC_ROLE_ARN: qcs::cam::uin/100041294359:roleName/GitHubActionsTcrPush
 
 jobs:
   build:
@@ -32,90 +27,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Exchange GitHub OIDC token for Tencent Cloud credentials
+      - name: Log in to Tencent TCR with CI service account
         shell: bash
+        env:
+          TCR_PUSH_USERNAME: ${{ secrets.TCR_PUSH_USERNAME }}
+          TCR_PUSH_PASSWORD: ${{ secrets.TCR_PUSH_PASSWORD }}
         run: |
           set -euo pipefail
 
-          oidc_response="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.tencentcloud.com")"
-          oidc_token="$(jq --exit-status --raw-output '.value' <<<"${oidc_response}")"
-          oidc_claims="$(python3 - "${oidc_token}" <<'PY'
-          import base64
-          import json
-          import sys
-
-          payload = sys.argv[1].split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload))
-          print(json.dumps({key: claims[key] for key in ("iss", "aud", "sub")}))
-          PY
-          )"
-          echo "GitHub OIDC claims: ${oidc_claims}"
-
-          sts_request="$(jq --null-input \
-            --arg provider "${TENCENTCLOUD_OIDC_PROVIDER}" \
-            --arg role_arn "${TENCENTCLOUD_OIDC_ROLE_ARN}" \
-            --arg web_identity_token "${oidc_token}" \
-            --arg session "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            '{ProviderId: $provider, RoleArn: $role_arn, WebIdentityToken: $web_identity_token, RoleSessionName: $session, DurationSeconds: 3600}')"
-          set +e
-          sts_response_with_status="$(curl --silent --show-error \
-            --request POST "https://sts.tencentcloudapi.com" \
-            --header "Authorization: SKIP" \
-            --header "Content-Type: application/json" \
-            --header "X-TC-Action: AssumeRoleWithWebIdentity" \
-            --header "X-TC-Region: ${TCR_REGION}" \
-            --header "X-TC-Timestamp: $(date +%s)" \
-            --header "X-TC-Version: 2018-08-13" \
-            --data "${sts_request}" \
-            --write-out $'\n%{http_code}')"
-          curl_exit="$?"
-          set -e
-          if [ "${curl_exit}" -ne 0 ]; then
-            echo "Tencent STS network request failed with curl exit ${curl_exit}" >&2
-            exit 1
-          fi
-          sts_status="${sts_response_with_status##*$'\n'}"
-          sts_response="${sts_response_with_status%$'\n'*}"
-          if [ "${sts_status}" -lt 200 ] || [ "${sts_status}" -ge 300 ]; then
-            sts_error="$(jq --raw-output '.Response.Error.Code // "unknown"' <<<"${sts_response}")"
-            echo "Tencent STS exchange failed with ${sts_status}: ${sts_error}" >&2
+          if [ -z "${TCR_PUSH_USERNAME}" ] || [ -z "${TCR_PUSH_PASSWORD}" ]; then
+            echo "TCR_PUSH_USERNAME and TCR_PUSH_PASSWORD GitHub secrets are required" >&2
             exit 1
           fi
 
-          secret_id="$(jq --exit-status --raw-output '.Response.Credentials.TmpSecretId' <<<"${sts_response}")"
-          secret_key="$(jq --exit-status --raw-output '.Response.Credentials.TmpSecretKey' <<<"${sts_response}")"
-          session_token="$(jq --exit-status --raw-output '.Response.Credentials.Token' <<<"${sts_response}")"
-          echo "::add-mask::${secret_id}"
-          echo "::add-mask::${secret_key}"
-          echo "::add-mask::${session_token}"
-          {
-            echo "TENCENTCLOUD_SECRET_ID=${secret_id}"
-            echo "TENCENTCLOUD_SECRET_KEY=${secret_key}"
-            echo "TENCENTCLOUD_TOKEN=${session_token}"
-          } >> "${GITHUB_ENV}"
-
-      - name: Install Tencent Cloud CLI
-        shell: bash
-        run: python3 -m pip install --disable-pip-version-check --quiet tccli
-
-      - name: Log in to Tencent TCR with a temporary token
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          token_response="$(tccli tcr CreateInstanceToken \
-            --RegistryId "${TCR_REGISTRY_ID}" \
-            --TokenType temp \
-            --region "${TCR_REGION}" \
-            --output json)"
-          username="$(jq --exit-status --raw-output '.Username // .Response.Username' <<<"${token_response}")"
-          token="$(jq --exit-status --raw-output '.Token // .Response.Token' <<<"${token_response}")"
-          echo "::add-mask::${token}"
           for attempt in 1 2 3 4 5; do
-            if printf '%s' "${token}" | docker login "${TCR_REGISTRY}" --username "${username}" --password-stdin; then
+            if printf '%s' "${TCR_PUSH_PASSWORD}" | docker login "${TCR_REGISTRY}" --username "${TCR_PUSH_USERNAME}" --password-stdin; then
               exit 0
             fi
 
