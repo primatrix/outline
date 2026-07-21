@@ -9,7 +9,10 @@ WORKDIR $APP_PATH
 COPY ./package.json ./yarn.lock ./.yarnrc.yml ./
 COPY ./patches ./patches
 
-RUN apt-get update && apt-get install -y cmake
+RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tencent.com/debian|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
 ENV NODE_OPTIONS="--max-old-space-size=24000"
 
 RUN corepack enable
@@ -44,8 +47,9 @@ COPY --from=build --chown=nodejs:nodejs $APP_PATH/.sequelizerc ./.sequelizerc
 COPY --from=build --chown=nodejs:nodejs $APP_PATH/node_modules ./node_modules
 COPY --from=build --chown=nodejs:nodejs $APP_PATH/package.json ./package.json
 
-RUN apt-get update \
-    && apt-get install -y wget \
+RUN sed -i 's|http://deb.debian.org/debian|https://mirrors.tencent.com/debian|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends wget \
     && rm -rf /var/lib/apt/lists/*
 
 ENV FILE_STORAGE_LOCAL_ROOT_DIR=/var/lib/outline/data
