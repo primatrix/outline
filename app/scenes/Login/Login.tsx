@@ -8,7 +8,6 @@ import styled from "styled-components";
 import { getCookie, setCookie } from "tiny-cookie";
 import { s } from "@shared/styles";
 import { Client, UserPreference } from "@shared/types";
-import { isPWA } from "@shared/utils/browser";
 import { parseDomain } from "@shared/utils/domains";
 import type { Config } from "~/stores/AuthStore";
 import { AvatarSize } from "~/components/Avatar";
@@ -60,7 +59,6 @@ function Login({ children, onBack }: Props) {
   const location = useLocation();
   const query = useQuery();
   const notice = query.get("notice");
-  const forceOTP = query.get("forceOTP");
 
   const { t } = useTranslation();
   const user = useCurrentUser({ rejectOnEmpty: false });
@@ -257,7 +255,7 @@ function Login({ children, onBack }: Props) {
     (provider) => provider.id === auth.lastSignedIn && !isCreate
   );
   const clientType = Desktop.isElectron() ? Client.Desktop : Client.Web;
-  const preferOTP = isPWA || !!forceOTP;
+  const preferOTP = true;
 
   if (firstRun) {
     return (
