@@ -60,15 +60,23 @@ jobs:
             --arg web_identity_token "${oidc_token}" \
             --arg session "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             '{ProviderId: $provider, RoleArn: $role_arn, WebIdentityToken: $web_identity_token, RoleSessionName: $session, DurationSeconds: 3600}')"
+          set +e
           sts_response_with_status="$(curl --silent --show-error \
             --request POST "https://sts.tencentcloudapi.com" \
             --header "Authorization: SKIP" \
             --header "Content-Type: application/json" \
             --header "X-TC-Action: AssumeRoleWithWebIdentity" \
             --header "X-TC-Region: ${TCR_REGION}" \
+            --header "X-TC-Timestamp: $(date +%s)" \
             --header "X-TC-Version: 2018-08-13" \
             --data "${sts_request}" \
             --write-out $'\n%{http_code}')"
+          curl_exit="$?"
+          set -e
+          if [ "${curl_exit}" -ne 0 ]; then
+            echo "Tencent STS network request failed with curl exit ${curl_exit}" >&2
+            exit 1
+          fi
           sts_status="${sts_response_with_status##*$'\n'}"
           sts_response="${sts_response_with_status%$'\n'*}"
           if [ "${sts_status}" -lt 200 ] || [ "${sts_status}" -ge 300 ]; then
