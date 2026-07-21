@@ -1,0 +1,128 @@
+name: Build Outline image for Tencent TCR
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: outline-tcr-build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TCR_REGISTRY: outline-prod-tcr.tencentcloudcr.com
+  TCR_REGISTRY_ID: tcr-piu6rsho
+  TCR_REGION: ap-shanghai
+  TCR_IMAGE: outline-prod-tcr.tencentcloudcr.com/outline/outline
+  TENCENTCLOUD_OIDC_PROVIDER: GitHubActions
+  TENCENTCLOUD_OIDC_ROLE_ARN: qcs::cam::uin/100041294359:roleName/GitHubActionsTcrPush
+
+jobs:
+  build:
+    name: Build and push linux/amd64 image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Exchange GitHub OIDC token for Tencent Cloud credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          oidc_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.tencentcloud.com")"
+          oidc_token="$(jq --exit-status --raw-output '.value' <<<"${oidc_response}")"
+
+          sts_request="$(jq --null-input \
+            --arg provider "${TENCENTCLOUD_OIDC_PROVIDER}" \
+            --arg role_arn "${TENCENTCLOUD_OIDC_ROLE_ARN}" \
+            --arg web_identity_token "${oidc_token}" \
+            --arg session "github-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            '{ProviderId: $provider, RoleArn: $role_arn, WebIdentityToken: $web_identity_token, RoleSessionName: $session, DurationSeconds: 3600}')"
+          sts_response="$(curl --fail-with-body --silent --show-error \
+            --request POST "https://sts.tencentcloudapi.com" \
+            --header "Authorization: SKIP" \
+            --header "Content-Type: application/json" \
+            --header "X-TC-Action: AssumeRoleWithWebIdentity" \
+            --header "X-TC-Region: ${TCR_REGION}" \
+            --header "X-TC-Version: 2018-08-13" \
+            --data "${sts_request}")"
+
+          secret_id="$(jq --exit-status --raw-output '.Response.Credentials.TmpSecretId' <<<"${sts_response}")"
+          secret_key="$(jq --exit-status --raw-output '.Response.Credentials.TmpSecretKey' <<<"${sts_response}")"
+          session_token="$(jq --exit-status --raw-output '.Response.Credentials.Token' <<<"${sts_response}")"
+          echo "::add-mask::${secret_id}"
+          echo "::add-mask::${secret_key}"
+          echo "::add-mask::${session_token}"
+          {
+            echo "TENCENTCLOUD_SECRET_ID=${secret_id}"
+            echo "TENCENTCLOUD_SECRET_KEY=${secret_key}"
+            echo "TENCENTCLOUD_TOKEN=${session_token}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Install Tencent Cloud CLI
+        shell: bash
+        run: python3 -m pip install --disable-pip-version-check --quiet tccli
+
+      - name: Log in to Tencent TCR with a temporary token
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          token_response="$(tccli tcr CreateInstanceToken \
+            --RegistryId "${TCR_REGISTRY_ID}" \
+            --TokenType temp \
+            --region "${TCR_REGION}" \
+            --output json)"
+          username="$(jq --exit-status --raw-output '.Username // .Response.Username' <<<"${token_response}")"
+          token="$(jq --exit-status --raw-output '.Token // .Response.Token' <<<"${token_response}")"
+          echo "::add-mask::${token}"
+          printf '%s' "${token}" | docker login "${TCR_REGISTRY}" --username "${username}" --password-stdin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push source build image
+        id: base
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.base
+          platforms: linux/amd64
+          push: true
+          pull: true
+          tags: ${{ env.TCR_IMAGE }}:base-${{ github.sha }}
+
+      - name: Build and push Outline runtime image
+        id: runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          pull: true
+          build-args: |
+            BASE_IMAGE=${{ env.TCR_IMAGE }}@${{ steps.base.outputs.digest }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/primatrix/outline
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ env.TCR_IMAGE }}:git-${{ github.sha }}
+
+      - name: Publish image digest
+        shell: bash
+        run: |
+          {
+            echo "## Tencent TCR image"
+            echo
+            echo "\`${TCR_IMAGE}@${{ steps.runtime.outputs.digest }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
