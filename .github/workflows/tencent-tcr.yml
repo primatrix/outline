@@ -59,7 +59,8 @@ jobs:
           driver-opts: network=host
 
       - name: Build and push source build image
-        id: base
+        id: base_first
+        continue-on-error: true
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -69,8 +70,26 @@ jobs:
           pull: true
           tags: ${{ env.TCR_IMAGE }}:base-${{ github.sha }}
 
+      - name: Retry source build image push
+        id: base_retry
+        if: steps.base_first.outcome == 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.base
+          platforms: linux/amd64
+          push: true
+          pull: true
+          tags: ${{ env.TCR_IMAGE }}:base-${{ github.sha }}
+
+      - name: Require source build image
+        if: steps.base_first.outcome == 'failure' && steps.base_retry.outcome == 'failure'
+        shell: bash
+        run: exit 1
+
       - name: Build and push Outline runtime image
-        id: runtime
+        id: runtime_first
+        continue-on-error: true
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -79,11 +98,33 @@ jobs:
           push: true
           pull: true
           build-args: |
-            BASE_IMAGE=${{ env.TCR_IMAGE }}@${{ steps.base.outputs.digest }}
+            BASE_IMAGE=${{ env.TCR_IMAGE }}@${{ steps.base_retry.outputs.digest || steps.base_first.outputs.digest }}
           labels: |
             org.opencontainers.image.source=https://github.com/primatrix/outline
             org.opencontainers.image.revision=${{ github.sha }}
           tags: ${{ env.TCR_IMAGE }}:git-${{ github.sha }}
+
+      - name: Retry Outline runtime image push
+        id: runtime_retry
+        if: steps.runtime_first.outcome == 'failure'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          pull: true
+          build-args: |
+            BASE_IMAGE=${{ env.TCR_IMAGE }}@${{ steps.base_retry.outputs.digest || steps.base_first.outputs.digest }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/primatrix/outline
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ env.TCR_IMAGE }}:git-${{ github.sha }}
+
+      - name: Require Outline runtime image
+        if: steps.runtime_first.outcome == 'failure' && steps.runtime_retry.outcome == 'failure'
+        shell: bash
+        run: exit 1
 
       - name: Publish image digest
         shell: bash
@@ -91,5 +132,5 @@ jobs:
           {
             echo "## Tencent TCR image"
             echo
-            echo "\`${TCR_IMAGE}@${{ steps.runtime.outputs.digest }}\`"
+            echo "\`${TCR_IMAGE}@${{ steps.runtime_retry.outputs.digest || steps.runtime_first.outputs.digest }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
