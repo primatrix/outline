@@ -5,7 +5,7 @@ import {
   buildEvent,
   buildUser,
 } from "@server/test/factories";
-import { getTestServer } from "@server/test/support";
+import { getTestServer, setSelfHosted } from "@server/test/support";
 
 const server = getTestServer();
 
@@ -85,6 +85,64 @@ describe("#events.list", () => {
     expect(body.data.length).toEqual(2);
     expect(body.data[0].id).toEqual(event.id);
     expect(body.data[1].id).toEqual(auditEvent.id);
+  });
+
+  it("should return audit events to self-hosted workspace admins", async () => {
+    setSelfHosted();
+
+    const admin = await buildAdmin();
+    const auditEvent = await buildEvent({
+      name: "users.suspend",
+      teamId: admin.teamId,
+      actorId: admin.id,
+      userId: admin.id,
+      changes: {
+        attributes: {
+          suspendedAt: "2026-07-22T00:00:00.000Z",
+          accessToken: "new-access-token",
+          secret: "new-secret",
+          password: "new-password",
+          api_key: "new-api-key",
+        },
+        previous: {
+          suspendedAt: null,
+          accessToken: "old-access-token",
+          secret: "old-secret",
+          password: "old-password",
+          api_key: "old-api-key",
+        },
+      },
+    });
+
+    const res = await server.post("/api/events.list", admin, {
+      body: {
+        auditLog: true,
+      },
+    });
+    const body = await res.json();
+
+    expect(res.status).toEqual(200);
+    expect(body.data).toContainEqual(
+      expect.objectContaining({
+        id: auditEvent.id,
+        changes: {
+          attributes: {
+            suspendedAt: "2026-07-22T00:00:00.000Z",
+            accessToken: "[redacted]",
+            secret: "[redacted]",
+            password: "[redacted]",
+            api_key: "[redacted]",
+          },
+          previous: {
+            suspendedAt: null,
+            accessToken: "[redacted]",
+            secret: "[redacted]",
+            password: "[redacted]",
+            api_key: "[redacted]",
+          },
+        },
+      })
+    );
   });
 
   it("should allow filtering by actorId", async () => {

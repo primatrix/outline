@@ -41,13 +41,15 @@ allow(User, "createTeam", Team, (actor, team) =>
 
 allow(User, "update", Team, isTeamAdmin);
 
-allow(User, ["delete", "audit"], Team, (actor, team) =>
+allow(User, "delete", Team, (actor, team) =>
   and(
     //
     isCloudHosted(),
     isTeamAdmin(actor, team)
   )
 );
+
+allow(User, "audit", Team, isTeamAdmin);
 
 allow(User, ["createTemplate", "updateTemplate"], Team, (actor, team) =>
   and(

@@ -42,6 +42,7 @@ const Import = lazy(() => import("~/scenes/Settings/Import"));
 const Integrations = lazy(() => import("~/scenes/Settings/Integrations"));
 const Members = lazy(() => import("~/scenes/Settings/Members"));
 const Notifications = lazy(() => import("~/scenes/Settings/Notifications"));
+const Operations = lazy(() => import("~/scenes/Settings/Operations"));
 const Preferences = lazy(() => import("~/scenes/Settings/Preferences"));
 const Profile = lazy(() => import("~/scenes/Settings/Profile"));
 const Security = lazy(() => import("~/scenes/Settings/Security"));
@@ -141,6 +142,15 @@ const useSettingsConfig = () => {
         component: Security.Component,
         preload: Security.preload,
         enabled: can.update,
+        group: t("Workspace"),
+        icon: ShieldIcon,
+      },
+      {
+        name: t("Audit Log"),
+        path: settingsPath("operations"),
+        component: Operations.Component,
+        preload: Operations.preload,
+        enabled: can.audit,
         group: t("Workspace"),
         icon: ShieldIcon,
       },
@@ -283,7 +293,14 @@ const useSettingsConfig = () => {
     });
 
     return items;
-  }, [t, can.createApiKey, can.update, can.createImport, can.createExport]);
+  }, [
+    t,
+    can.audit,
+    can.createApiKey,
+    can.update,
+    can.createImport,
+    can.createExport,
+  ]);
 
   return config.filter((item) => item.enabled);
 };

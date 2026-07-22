@@ -1,9 +1,28 @@
 import { UserRole } from "@shared/types";
+import { Team, User } from "@server/models";
 import { buildUser, buildTeam, buildAdmin } from "@server/test/factories";
 import { setSelfHosted } from "@server/test/support";
 import { serialize } from "./index";
 
 describe("policies/team", () => {
+  it("allows self-hosted workspace admins to audit their team", () => {
+    setSelfHosted();
+
+    const team = Team.build({
+      id: "team-id",
+    });
+    const admin = User.build({
+      id: "admin-id",
+      teamId: team.id,
+      role: UserRole.Admin,
+    });
+
+    const abilities = serialize(admin, team);
+
+    expect(abilities.audit).toEqual(true);
+    expect(abilities.delete).toEqual(false);
+  });
+
   it("should allow reading only", async () => {
     setSelfHosted();
 
