@@ -706,13 +706,105 @@
       ]
     },
     "change": {
-      "commit": "cd2581f4c",
+      "commit": "dd4aa0c19",
       "policy": "BaseEmail always sends plainTextOnly=true; Mailer requires this field and omits HTML and inline attachments.",
       "affectedTemplates": "Signin, invitation, reminder, welcome, notification, export, confirmation, and webhook emails.",
       "htmlSource": "HTML React templates remain in source for a future explicit opt-in, but are not sent by the MVP path.",
       "tests": "BaseEmail, InviteEmail, and SigninEmail focused tests pass.",
       "liveVerification": "Pending one new invitation to cjx0709@gmail.com after the image is deployed."
     }
+  },
+  "tencentMvpRollout20260722": {
+    "observedAt": "2026-07-22T11:44:20+08:00",
+    "scope": "Attempted release of the unified plain-text email policy from the Tencent CVM builder to the existing TKE Outline workload.",
+    "source": {
+      "branch": "develop/tencent-vpc-build-runner",
+      "commit": "dd4aa0c19",
+      "mode": "git",
+      "result": "Source was fetched from the fork branch and the Dockerfile.tcr build completed successfully on CVM ins-3iw2tbc7."
+    },
+    "image": {
+      "repository": "outline-prod-tcr.tencentcloudcr.com/outline/outline",
+      "tag": "git-dd4aa0c19",
+      "buildResult": "success",
+      "pushResult": "timeout",
+      "pushTask": "TAT task invt-u6e727gpd9",
+      "pushWindow": "2026-07-22 11:29:20 to 2026-07-22 11:44:20",
+      "pushExitCode": -1,
+      "evidence": [
+        "Unauthenticated docker push failed immediately with unauthorized.",
+        "Authenticated public push did not complete within the 900 second TAT timeout.",
+        "TAT exposes task status and duration but no Docker layer byte count or percentage.",
+        "No new immutable digest was obtained, so the TKE Deployment was not patched."
+      ]
+    },
+    "networkConclusion": {
+      "currentPath": "Tencent CVM public EIP 1.15.103.207 -> public TCR endpoint",
+      "status": "blocked_or_unreliable",
+      "likelyControl": "TCR instance network ACL requires the builder public IP/CIDR to be allowed; the console also recommends VPC private access.",
+      "nextAction": "Temporarily allow only the builder EIP as /32, or move the builder into the TCR VPC path, then verify the tag exists before retrying.",
+      "securityBoundary": "Do not use 0.0.0.0/0 for the TCR allowlist."
+    },
+    "deployment": {
+      "status": "not_started",
+      "cluster": "cls-7hm02m8r",
+      "namespace": "outline",
+      "deployment": "outline",
+      "currentLiveDigest": "sha256:4f610baf50b47370e894b3b0821f8d356856fa0d7b662d8b48286757c710efce",
+      "currentLiveTag": "git-84b95fde0",
+      "reason": "Push did not return a digest; the release SOP correctly stopped before TKE rollout."
+    },
+    "progressVisibility": "TAT shows command state, start/end time, duration, exit code, and logs when available; it does not show Docker upload percentage or bytes transferred."
+  },
+  "tencentMvpPrivateVpcRelease20260722": {
+    "observedAt": "2026-07-22T12:08:45+08:00",
+    "scope": "Successful release of the plain-text email policy through the Tencent private VPC path.",
+    "network": {
+      "builderCvm": "ins-3iw2tbc7",
+      "builderPrivateIp": "10.0.48.16",
+      "vpc": "vpc-3w8soca6",
+      "tcrPrivateIp": "10.0.112.10",
+      "registryHostname": "outline-prod-tcr.tencentcloudcr.com",
+      "dnsResult": "The registry hostname resolved to 10.0.112.10 on the builder.",
+      "unauthenticatedRegistryCheck": "HTTP 401 from the private registry endpoint, which confirms the private HTTPS endpoint was reached."
+    },
+    "image": {
+      "repository": "outline-prod-tcr.tencentcloudcr.com/outline/outline",
+      "tag": "git-dd4aa0c19",
+      "pushResult": "success",
+      "pushDuration": "36 seconds",
+      "digest": "sha256:41aabc55dbacc62a6bc62a8dcfcb92555b6bdda583663ca851fe0930d2a7434b",
+      "credentialHandling": "A short-lived TCR credential was injected only into the TAT command and was not written to source, logs, or this record."
+    },
+    "deployment": {
+      "cluster": "cls-7hm02m8r",
+      "namespace": "outline",
+      "deployment": "outline",
+      "updateResult": "success",
+      "image": "outline-prod-tcr.tencentcloudcr.com/outline/outline@sha256:41aabc55dbacc62a6bc62a8dcfcb92555b6bdda583663ca851fe0930d2a7434b",
+      "observedGeneration": 8,
+      "replicas": 1,
+      "updatedReplicas": 1,
+      "readyReplicas": 1,
+      "availableReplicas": 1,
+      "replicaSet": "outline-554c7f857d",
+      "rolloutMessage": "ReplicaSet outline-554c7f857d successfully progressed."
+    },
+    "verification": {
+      "externalRootHttpStatus": 200,
+      "externalHealthHttpStatus": 200,
+      "externalHealthBody": "OK",
+      "externalAuthConfigHttpStatus": 200,
+      "externalAuthProvider": "email",
+      "builderToPublicNodePort": "Timed out; this is a builder egress or public hairpin limitation and is not used as the service-health verdict.",
+      "conclusion": "The service endpoint is reachable externally and the TKE rollout is healthy."
+    },
+    "pathDecision": {
+      "current": "Tencent CVM/TAT build -> private VPC TCR push -> TKE digest rollout",
+      "notUsed": "GitHub public Runner -> public Shanghai TCR large-image upload",
+      "todo": "Move the build and release executor to internal GitLab or a Tencent-native private pipeline when available."
+    },
+    "humanReadableRecord": "/Users/jiongxuan/workspace/note/outline-tencent-mvp-rollout.md"
   },
   "releaseSOP": {
     "status": "defined",
