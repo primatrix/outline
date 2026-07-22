@@ -1,6 +1,6 @@
 {
   "title": "Outline GKE POC memory",
-  "updatedAt": "2026-07-22T10:17:02+08:00",
+  "updatedAt": "2026-07-22T10:57:45+08:00",
   "purpose": "Trace the Outline MVP/POC deployment attempt on GKE so future work can continue without relying on chat history.",
   "usageGuide": "/Users/jiongxuan/workspace/note/outline-gke-poc-usage.md",
   "repositoryRules": {
@@ -692,6 +692,53 @@
       "Move image build and push into an internal GitLab or Tencent-native pipeline when the private network is available.",
       "Rotate or delete the temporary TCR pull identity before the 30-day expiry if this MVP is not kept."
     ]
+  },
+  "emailDeliveryPolicy20260722": {
+    "status": "code-changed-not-deployed",
+    "scope": "All emails sent through BaseEmail and Mailer in the current MVP build.",
+    "rootCause": "The templates generated HTML and an inline header image, while the current enterprise mailbox exposed the raw MIME body instead of rendering it.",
+    "scan": {
+      "templateCount": 24,
+      "templatesMissingRenderAsText": 0,
+      "mailerSendCallSites": [
+        "server/emails/templates/BaseEmail.tsx",
+        "server/emails/mailer.tsx"
+      ]
+    },
+    "change": {
+      "commit": "f6c525968",
+      "policy": "BaseEmail always sends plainTextOnly=true; Mailer requires this field and omits HTML and inline attachments.",
+      "affectedTemplates": "Signin, invitation, reminder, welcome, notification, export, confirmation, and webhook emails.",
+      "htmlSource": "HTML React templates remain in source for a future explicit opt-in, but are not sent by the MVP path.",
+      "tests": "BaseEmail, InviteEmail, and SigninEmail focused tests pass.",
+      "liveVerification": "Pending one new invitation to cjx0709@gmail.com after the image is deployed."
+    }
+  },
+  "releaseSOP": {
+    "status": "defined",
+    "singleExecutor": "One build/deploy task per source commit; do not submit parallel retries while a task is running.",
+    "inputs": [
+      "SOURCE_COMMIT",
+      "IMAGE_TAG=git-<short-commit>",
+      "TCR repository",
+      "PREVIOUS_DIGEST"
+    ],
+    "steps": [
+      "Run focused tests, lint/typecheck, health check, and record the current digest.",
+      "Build Dockerfile.tcr once with the immutable git tag.",
+      "Push the tag to TCR and record the returned immutable digest.",
+      "Update TKE Deployment to the digest and wait for rollout status.",
+      "Verify Pod digest, generation, health, auth.config, OTP/invitation, and API/document smoke tests.",
+      "On failure, do not advance; roll back to PREVIOUS_DIGEST and record the result."
+    ],
+    "temporaryPath": "Tencent CVM/TAT -> TCR -> TKE",
+    "longTermPath": "Internal GitLab or Tencent-native private pipeline",
+    "constraints": [
+      "Never deploy latest.",
+      "Do not put credentials in commands or logs.",
+      "GitHub public Runner to Shanghai TCR is not the current delivery path because the large image upload is unreliable."
+    ],
+    "humanReadableRecord": "/Users/jiongxuan/workspace/note/outline-tencent-mvp-rollout.md"
   },
   "nextSteps": [
     "Review the Agent API POC collection in the UI and decide whether to keep or archive/delete the smoke-test data.",

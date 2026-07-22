@@ -65,10 +65,6 @@ ${this.t("If the code expired you can request a new one from your team's signin 
 `;
   }
 
-  protected plainTextOnly(): boolean {
-    return true;
-  }
-
   protected render({ token, client, teamUrl, verificationCode }: Props) {
     if (env.isDevelopment) {
       if (token) {

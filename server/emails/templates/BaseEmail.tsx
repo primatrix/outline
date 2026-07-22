@@ -176,7 +176,8 @@ export default abstract class BaseEmail<
           </>
         ),
         text: this.renderAsText(data),
-        plainTextOnly: this.plainTextOnly?.(data),
+        // Keep all outbound emails compatible with clients that expose raw MIME.
+        plainTextOnly: true,
         headCSS: this.headCSS?.(data),
         unsubscribeUrl: this.unsubscribeUrl?.(data),
         tags: { category: this.category, template: templateName },
@@ -274,14 +275,6 @@ export default abstract class BaseEmail<
    * @returns The plain text email as a string
    */
   protected abstract renderAsText(props: S & T): string;
-
-  /**
-   * Returns whether this email should be sent as plain text only.
-   *
-   * @param props Props in email constructor
-   * @returns True when the email should omit HTML and attachments.
-   */
-  protected plainTextOnly?(props: S & T): boolean;
 
   /**
    * Returns a React element that will be rendered on the server to produce the
