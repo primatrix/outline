@@ -1,6 +1,6 @@
 {
   "title": "Outline GKE POC memory",
-  "updatedAt": "2026-07-21T22:12:00+08:00",
+  "updatedAt": "2026-07-22T10:17:02+08:00",
   "purpose": "Trace the Outline MVP/POC deployment attempt on GKE so future work can continue without relying on chat history.",
   "usageGuide": "/Users/jiongxuan/workspace/note/outline-gke-poc-usage.md",
   "repositoryRules": {
@@ -648,7 +648,8 @@
         "TKE rolling update is healthy: generation 8, updated 1, ready 1, available 1.",
         "The temporary public endpoint returns HTTP 200 from /_health and exposes the Email provider through /api/auth.config.",
         "Email OTP request, worker scheduling, email send, callback, and accessToken session creation were verified end to end.",
-        "SigninEmail now generates a plain-text-only message without HTML or inline image attachments."
+        "SigninEmail now generates a plain-text-only message without HTML or inline image attachments.",
+        "The user confirmed that the new plain-text OTP email renders normally in AliMail."
       ],
       "mvpWorkarounds": [
         "Public access uses http://124.223.85.123:30265 through a worker NodePort, with TCP 30265 open from 0.0.0.0/0.",
@@ -657,12 +658,24 @@
         "TKE API access from the build CVM relies on a temporary cluster security-group rule for 10.0.48.16/32."
       ],
       "todoBeforeProduction": [
-        "Confirm the new plain-text email renders normally in AliMail; code generation and delivery are verified, but client-side visual rendering still needs confirmation.",
         "Replace the public NodePort with a stable custom domain, HTTPS, and a correctly configured CLB listener.",
         "Remove the 0.0.0.0/0 NodePort rule and temporary cluster API access rule after the stable entry path and pipeline are ready.",
         "Move image build and push to internal GitLab or a Tencent-native private pipeline.",
-        "Complete production readiness validation for backups, restore, monitoring, load/performance, failure recovery, database upgrades, and SMTP operational limits."
-      ]
+        "Complete production readiness validation for backups, restore, monitoring, load/performance, failure recovery, database upgrades, and SMTP operational limits.",
+        "Decide whether to retain or release the temporary CVM builder, EIP, TCR instance, and associated COS storage after the MVP window."
+      ],
+      "resourcePausePlan": {
+        "nodePort": "The Service NodePort number has no fixed expiry while the Service remains, but the public worker IP entry is not durable and remains a temporary MVP workaround.",
+        "cvmBuilder": "The CVM is a build/push tool rather than a runtime dependency. It can be stopped and restarted for later image releases; cloud disk and related network resources must be checked separately for billing.",
+        "tcr": "The TCR enterprise basic instance is independent of the CVM and remains the image source for TKE. Keep it while the running workload may need image pull or rollback; release it only after image backup and resource cleanup review.",
+        "resumeSequence": [
+          "Start the CVM builder.",
+          "Check Docker, source revision, TCR authentication, and available disk space.",
+          "Build and push a new version tag, then record its immutable digest.",
+          "Update the TKE Deployment image and wait for the rollout to become Ready.",
+          "Run health, OTP login, document CRUD, and rollback smoke tests."
+        ]
+      }
     },
     "otpValidation": {
       "provider": "Email",
