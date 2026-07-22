@@ -806,6 +806,34 @@
     },
     "humanReadableRecord": "/Users/jiongxuan/workspace/note/outline-tencent-mvp-rollout.md"
   },
+  "pocBaseline20260722": {
+    "status": "fixed_for_further_validation",
+    "runtimeSourceCommit": "dd4aa0c19",
+    "documentationCommit": "6a6baaf2e9c6",
+    "gitTag": "poc-20260722",
+    "image": "outline-prod-tcr.tencentcloudcr.com/outline/outline@sha256:41aabc55dbacc62a6bc62a8dcfcb92555b6bdda583663ca851fe0930d2a7434b",
+    "publicEndpoint": "http://124.223.85.123:30265",
+    "tke": {
+      "cluster": "cls-7hm02m8r",
+      "namespace": "outline",
+      "deployment": "outline",
+      "rolloutGeneration": 10,
+      "observedGeneration": 10,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "availableReplicas": 1,
+      "refreshMode": "Restarted the Pod with the existing immutable digest; no rebuild or registry upload was performed."
+    },
+    "externalVerification": {
+      "root": 200,
+      "health": 200,
+      "healthBody": "OK",
+      "authConfig": 200,
+      "authProvider": "email"
+    },
+    "rule": "Further tests use this tag, digest, and endpoint. Only source changes create a new tag and image release.",
+    "humanReadableRecord": "/Users/jiongxuan/workspace/note/outline-tencent-mvp-rollout.md"
+  },
   "releaseSOP": {
     "status": "defined",
     "singleExecutor": "One build/deploy task per source commit; do not submit parallel retries while a task is running.",
