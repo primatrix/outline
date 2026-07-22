@@ -1,13 +1,36 @@
 import { faker } from "@faker-js/faker";
+import env from "@server/env";
 import SigninEmail from "@server/emails/templates/SigninEmail";
 import WelcomeEmail from "@server/emails/templates/WelcomeEmail";
 import { AuthenticationProvider } from "@server/models";
 import { buildUser, buildGuestUser, buildTeam } from "@server/test/factories";
 import { getTestServer } from "@server/test/support";
+import RateLimiter from "@server/utils/RateLimiter";
 
 const server = getTestServer();
 
 describe("email", () => {
+  it("should limit email sign-in requests to fifty per hour", async () => {
+    const originalRateLimiterEnabled = env.RATE_LIMITER_ENABLED;
+    const originalRateLimiterMultiplier = env.RATE_LIMITER_MULTIPLIER;
+    env.RATE_LIMITER_ENABLED = true;
+    env.RATE_LIMITER_MULTIPLIER = 1;
+    RateLimiter.rateLimiterMap.clear();
+
+    try {
+      const res = await server.post("/auth/email", {
+        body: {},
+      });
+
+      expect(res.status).toEqual(400);
+      expect(RateLimiter.getRateLimiter("/auth/email").points).toEqual(50);
+    } finally {
+      env.RATE_LIMITER_ENABLED = originalRateLimiterEnabled;
+      env.RATE_LIMITER_MULTIPLIER = originalRateLimiterMultiplier;
+      RateLimiter.rateLimiterMap.clear();
+    }
+  });
+
   it("should fail with status 400 bad request if email is invalid", async () => {
     const res = await server.post("/auth/email", {
       body: { email: "invalid" },
