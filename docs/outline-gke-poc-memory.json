@@ -706,7 +706,7 @@
       ]
     },
     "change": {
-      "commit": "f6c525968",
+      "commit": "cd2581f4c",
       "policy": "BaseEmail always sends plainTextOnly=true; Mailer requires this field and omits HTML and inline attachments.",
       "affectedTemplates": "Signin, invitation, reminder, welcome, notification, export, confirmation, and webhook emails.",
       "htmlSource": "HTML React templates remain in source for a future explicit opt-in, but are not sent by the MVP path.",
