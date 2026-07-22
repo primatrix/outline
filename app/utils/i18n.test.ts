@@ -2,6 +2,7 @@ import i18n from "i18next";
 import de_DE from "../../shared/i18n/locales/de_DE/translation.json";
 import en_US from "../../shared/i18n/locales/en_US/translation.json";
 import pt_PT from "../../shared/i18n/locales/pt_PT/translation.json";
+import { DEFAULT_LANGUAGE } from "./i18n";
 
 // i18n is already initialized globally via app/test/setup.ts — only add
 // test resources here, without re-initializing the singleton.
@@ -10,6 +11,12 @@ beforeAll(() => {
     .addResources("en-US", "translation", en_US)
     .addResources("de-DE", "translation", de_DE)
     .addResources("pt-PT", "translation", pt_PT);
+});
+
+describe("default language", () => {
+  it("uses Simplified Chinese when no language is provided", () => {
+    expect(DEFAULT_LANGUAGE).toBe("zh_CN");
+  });
 });
 
 describe("i18n env is unset", () => {

@@ -7,6 +7,8 @@ import { isRTLLanguage } from "@shared/utils/rtl";
 import { cdnPath } from "@shared/utils/urls";
 import Logger from "./Logger";
 
+export const DEFAULT_LANGUAGE = "zh_CN";
+
 /**
  * Initializes i18n library, loading all available translations from the
  * API backend.
@@ -15,7 +17,7 @@ import Logger from "./Logger";
  * is not supported.
  * @returns A promise resolving to the i18n instance
  */
-export function initI18n(defaultLanguage = "en_US") {
+export function initI18n(defaultLanguage = DEFAULT_LANGUAGE) {
   const lng = unicodeCLDRtoBCP47(defaultLanguage);
 
   if (typeof document !== "undefined") {

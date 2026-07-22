@@ -809,7 +809,7 @@
   "pocBaseline20260722": {
     "status": "fixed_for_further_validation",
     "runtimeSourceCommit": "dd4aa0c19",
-    "documentationCommit": "6a6baaf2e9c6",
+    "documentationCommit": "ebaeda742",
     "gitTag": "poc-20260722",
     "image": "outline-prod-tcr.tencentcloudcr.com/outline/outline@sha256:41aabc55dbacc62a6bc62a8dcfcb92555b6bdda583663ca851fe0930d2a7434b",
     "publicEndpoint": "http://124.223.85.123:30265",
@@ -833,6 +833,76 @@
     },
     "rule": "Further tests use this tag, digest, and endpoint. Only source changes create a new tag and image release.",
     "humanReadableRecord": "/Users/jiongxuan/workspace/note/outline-tencent-mvp-rollout.md"
+  },
+  "defaultLanguageChange20260722": {
+    "status": "code_only_not_deployed",
+    "defaultLanguage": "zh_CN",
+    "changedFiles": [
+      "app/utils/i18n.ts",
+      "server/env.ts",
+      "app.json",
+      "app/test/setup.ts",
+      "app/utils/i18n.test.ts"
+    ],
+    "behavior": "Explicit DEFAULT_LANGUAGE remains higher priority than the code fallback.",
+    "verification": [
+      "app/utils/i18n.test.ts: 13 passed",
+      "oxlint on changed files: passed",
+      "tsc --noEmit: passed"
+    ],
+    "releaseRule": "Do not build or deploy a new image until a later release is intentionally scheduled."
+  },
+  "fixedVersionValidation20260722": {
+    "endpoint": "http://124.223.85.123:30265",
+    "baseline": "poc-20260722 / sha256:41aabc55dbacc62a6bc62a8dcfcb92555b6bdda583663ca851fe0930d2a7434b",
+    "readOnlyChecks": {
+      "root": 200,
+      "health": 200,
+      "healthBody": "OK",
+      "authConfig": 200,
+      "authProvider": "email"
+    },
+    "otpRequest": {
+      "email": "cjx0709@gmail.com",
+      "result": "POST /auth/email with preferOTP=true returned success=true"
+    },
+    "blockedChecks": [
+      "Invitation API verification",
+      "API/CLI read-write and updatedBy attribution",
+      "Editor-owned API key verification",
+      "Restart persistence readback",
+      "Database and object-storage backup/restore drill"
+    ],
+    "blocker": "Historical API keys supplied in earlier POC work all returned Invalid API key; generate a fresh personal key before mutating tests.",
+    "policySource": "server/policies/user.ts allows admins, or non-guest non-viewer members when membersCanInvite is enabled."
+  },
+  "gkeFixedDomainResearch20260722": {
+    "status": "researched_no_mutation",
+    "context": "gke_tpu-service-473302_southamerica-west1_sglang-jax-dev",
+    "namespace": "outline-poc",
+    "currentIngress": {
+      "service": "ClusterIP:3000",
+      "controller": "GCE Ingress",
+      "host": "outline-poc.8.232.42.156.sslip.io",
+      "staticIp": "8.232.42.156",
+      "httpOnly": true
+    },
+    "recommendedPath": [
+      "Choose a company-owned FQDN",
+      "Create DNS A record to 8.232.42.156",
+      "Add GKE ManagedCertificate and wait for Active",
+      "Set Outline URL=https://<FQDN> and FORCE_HTTPS=true",
+      "Verify login callbacks, API, WebSocket, collaboration, and email links",
+      "Only then disable HTTP and retire the sslip.io host"
+    ],
+    "gatewayDecision": "Do not introduce Gateway API for the first migration; the cluster has no Gateway/HTTPRoute resources and existing GCE Ingress is sufficient for this single-service demo.",
+    "rollback": "Keep the old sslip.io host and static IP until the new domain is verified.",
+    "mutationsPerformed": false,
+    "officialReferences": [
+      "https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-traffic-management",
+      "https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/configuring-domain-name-static-ip?hl=en",
+      "https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways"
+    ]
   },
   "releaseSOP": {
     "status": "defined",
