@@ -64,6 +64,17 @@ export default function init(
   server.on(
     "upgrade",
     function (req: IncomingMessage, socket: Duplex, head: Buffer) {
+      const rejectUpgrade = () => {
+        socket.on("error", (error: NodeJS.ErrnoException) => {
+          if (error.code === "ECONNRESET") {
+            return;
+          }
+
+          Logger.error("Socket error while rejecting WebSocket upgrade", error);
+        });
+        socket.end(`HTTP/1.1 400 Bad Request\r\n`);
+      };
+
       if (req.url?.startsWith(path) && ioHandleUpgrade) {
         // For on-premise deployments, ensure the websocket origin matches the deployed URL.
         // In cloud-hosted we support any origin for custom domains.
@@ -71,7 +82,7 @@ export default function init(
           !env.isCloudHosted &&
           (!req.headers.origin || !env.URL.startsWith(req.headers.origin))
         ) {
-          socket.end(`HTTP/1.1 400 Bad Request\r\n`);
+          rejectUpgrade();
           return;
         }
 
@@ -85,7 +96,7 @@ export default function init(
       }
 
       // If the collaboration service isn't running then we need to close the connection
-      socket.end(`HTTP/1.1 400 Bad Request\r\n`);
+      rejectUpgrade();
     }
   );
 
