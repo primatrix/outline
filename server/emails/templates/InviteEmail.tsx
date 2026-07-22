@@ -46,6 +46,10 @@ export default class InviteEmail extends BaseEmail<Props, void> {
     );
   }
 
+  protected plainTextOnly(): boolean {
+    return true;
+  }
+
   protected replyTo({ notification }: Props) {
     if (notification?.user && notification.actor?.email) {
       if (can(notification.user, "readEmail", notification.actor)) {
