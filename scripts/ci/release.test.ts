@@ -103,6 +103,12 @@ describe("release.sh", () => {
     expect(deployRunner).toContain("privileged = false");
     expect(buildRunner).toContain('runnerToken: ""');
     expect(deployRunner).toContain('runnerToken: ""');
+    expect(buildRunner).toContain(
+      "image:\n  registry: docker.io\n  image: gitlab/gitlab-runner\n  tag: alpine-v18.3.1"
+    );
+    expect(deployRunner).toContain(
+      "image:\n  registry: docker.io\n  image: gitlab/gitlab-runner\n  tag: alpine-v18.3.1"
+    );
   });
 
   test("build publishes the immutable TCR digest as a release artifact", () => {

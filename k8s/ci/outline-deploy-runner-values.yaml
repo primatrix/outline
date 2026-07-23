@@ -1,6 +1,11 @@
 gitlabUrl: https://gitlab.infiscale-tech.com
 runnerToken: ""
 
+image:
+  registry: docker.io
+  image: gitlab/gitlab-runner
+  tag: alpine-v18.3.1
+
 checkInterval: 3
 concurrent: 1
 unregisterRunners: true
