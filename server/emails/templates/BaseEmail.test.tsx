@@ -1,8 +1,5 @@
 import mailer from "@server/emails/mailer";
-import BaseEmail, {
-  EmailMessageCategory,
-  type EmailProps,
-} from "./BaseEmail";
+import BaseEmail, { EmailMessageCategory, type EmailProps } from "./BaseEmail";
 
 class TestEmail extends BaseEmail<EmailProps> {
   protected get category() {

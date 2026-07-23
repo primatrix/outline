@@ -524,7 +524,11 @@ export default function Mermaid({
         return this.getState(state)?.decorationSet;
       },
       handleKeyDown(view, event) {
-        if (event.key === "Enter" && isModKey(event) && !editor.props.readOnly) {
+        if (
+          event.key === "Enter" &&
+          isModKey(event) &&
+          !editor.props.readOnly
+        ) {
           const { selection } = view.state;
           const isNodeSel = selection instanceof NodeSelection;
           const isMermaidNode =

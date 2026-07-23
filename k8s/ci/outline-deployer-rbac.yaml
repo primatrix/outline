@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitlab-ci
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: outline-ci-builder
+  namespace: gitlab-ci
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: outline-ci-deployer
+  namespace: gitlab-ci
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: outline-ci-deployer
+  namespace: outline
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    resourceNames:
+      - outline
+    verbs:
+      - get
+      - patch
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: outline-ci-deployer
+  namespace: outline
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: outline-ci-deployer
+subjects:
+  - kind: ServiceAccount
+    name: outline-ci-deployer
+    namespace: gitlab-ci

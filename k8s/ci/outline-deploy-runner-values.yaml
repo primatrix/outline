@@ -1,0 +1,31 @@
+gitlabUrl: https://gitlab.infiscale-tech.com
+runnerToken: ""
+
+checkInterval: 3
+concurrent: 1
+unregisterRunners: true
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+
+runners:
+  config: |
+    [[runners]]
+      executor = "kubernetes"
+      [runners.kubernetes]
+        namespace = "gitlab-ci"
+        service_account = "outline-ci-deployer"
+        service_account_overwrite_allowed = ""
+        namespace_overwrite_allowed = ""
+        allowed_images = ["alpine:3.21.3"]
+        privileged = false
+        allow_privilege_escalation = false
+        image = "alpine:3.21.3"
+        cpu_request = "250m"
+        cpu_limit = "1"
+        memory_request = "256Mi"
+        memory_limit = "1Gi"
+        poll_timeout = 1200

@@ -1,0 +1,160 @@
+stages:
+  - validate
+  - test
+  - build
+  - deploy
+  - verify
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
+
+variables:
+  KUBE_CONTAINER: outline
+  KUBE_DEPLOYMENT: outline
+  KUBE_NAMESPACE: outline
+  KUBECTL_SHA256: b46ecf2b80f76d5a7d58c296c2e11e42c85eaa1eb866ddbc1e91625f71c210
+  KUBECTL_VERSION: v1.34.7
+  OUTLINE_INTERNAL_URL: http://outline.outline.svc.cluster.local
+  ROLLOUT_TIMEOUT: 10m
+  TCR_IMAGE: outline-prod-tcr.tencentcloudcr.com/outline/outline
+
+.kubectl-job:
+  image: alpine:3.21.3
+  before_script:
+    - apk add --no-cache bash curl
+    - |
+      curl --fail --location --retry 3 --silent --show-error \
+        --output /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+      printf '%s  %s\n' "$KUBECTL_SHA256" /usr/local/bin/kubectl | sha256sum --check --strict
+      chmod 0755 /usr/local/bin/kubectl
+
+.node-job:
+  image: node:26.3.0
+  tags:
+    - outline-build
+  before_script:
+    - npm install --global corepack@0.35.0
+    - corepack enable
+    - yarn install --immutable
+
+validate-ci-scripts:
+  stage: validate
+  extends: .node-job
+  script:
+    - yarn vitest run --config vitest.ci.config.ts
+    - yarn lint
+    - yarn format:check
+
+test-client:
+  stage: test
+  extends: .node-job
+  needs:
+    - validate-ci-scripts
+  variables:
+    NODE_ENV: test
+    NODE_OPTIONS: --max-old-space-size=8192
+  script:
+    - yarn test:app
+    - yarn test:shared
+
+test-server:
+  stage: test
+  extends: .node-job
+  needs:
+    - validate-ci-scripts
+  services:
+    - name: postgres:14.2
+      variables:
+        POSTGRES_DB: outline-test
+        POSTGRES_PASSWORD: pass
+        POSTGRES_USER: user
+  variables:
+    DATABASE_URL: postgres://user:pass@127.0.0.1:5432/outline-test
+    NODE_ENV: test
+    NODE_OPTIONS: --max-old-space-size=8192
+    REDIS_URL: redis://127.0.0.1:6379
+  script:
+    - yarn sequelize db:migrate
+    - yarn test:server --maxWorkers=2
+
+build-image:
+  stage: build
+  image:
+    name: moby/buildkit:rootless
+    entrypoint: [""]
+  tags:
+    - outline-build
+  needs:
+    - validate-ci-scripts
+    - test-client
+    - test-server
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+    DOCKER_CONFIG: $CI_PROJECT_DIR/.docker
+  script:
+    - bash scripts/ci/release.sh build
+  artifacts:
+    access: developer
+    expire_in: 7 days
+    reports:
+      dotenv: release.env
+
+deploy-production:
+  stage: deploy
+  extends: .kubectl-job
+  tags:
+    - outline-deploy
+  needs:
+    - job: build-image
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  environment:
+    name: production
+  resource_group: outline-production
+  script:
+    - bash scripts/ci/release.sh deploy
+  artifacts:
+    access: developer
+    expire_in: 30 days
+    reports:
+      dotenv: release.env
+
+verify-production:
+  stage: verify
+  extends: .kubectl-job
+  tags:
+    - outline-deploy
+  needs:
+    - job: deploy-production
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  environment:
+    name: production
+  script:
+    - bash scripts/ci/release.sh verify
+
+rollback-production:
+  stage: verify
+  extends: .kubectl-job
+  tags:
+    - outline-deploy
+  needs:
+    - job: deploy-production
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  environment:
+    name: production
+  resource_group: outline-production
+  script:
+    - bash scripts/ci/release.sh rollback
