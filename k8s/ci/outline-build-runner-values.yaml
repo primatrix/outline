@@ -8,7 +8,7 @@ image:
 
 checkInterval: 3
 concurrent: 1
-unregisterRunners: true
+unregisterRunners: false
 
 rbac:
   create: true
@@ -17,6 +17,7 @@ serviceAccount:
   create: true
 
 runners:
+  secret: outline-build-runner-gitlab-runner
   config: |
     [[runners]]
       executor = "kubernetes"
